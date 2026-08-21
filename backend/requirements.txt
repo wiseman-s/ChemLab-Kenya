@@ -1,7 +1,9 @@
 fastapi
 uvicorn
 pydantic
-rdkit-pypi
+rdkit-pypi==2023.9.4
 httpx
 sympy
 python-multipart
+requests
+certifi
