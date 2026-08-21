@@ -1,0 +1,16 @@
+import type { Tool } from '../Tool';
+import type { Vec2, MultitailArrowReferencePosition, Action, MULTITAIL_ARROW_KEY } from 'ketcher-core';
+import type { ClosestItemWithMap } from '../../shared/closest.types';
+export declare type ArrowAddTool = Required<Pick<Tool, 'mousemove' | 'mouseup' | 'mousedown'>>;
+export declare type ReactionArrowClosestItem = ClosestItemWithMap<Vec2, 'rxnArrows'>;
+export declare type MultitailArrowClosestItem = ClosestItemWithMap<MultitailArrowReferencePosition, typeof MULTITAIL_ARROW_KEY>;
+export interface CommonArrowDragContext<CI> {
+    originalPosition: Vec2;
+    action: Action | null;
+    closestItem: CI;
+}
+export interface ArrowMoveTool<CI> {
+    mousedown: (event: PointerEvent, closestItem: CI) => CommonArrowDragContext<CI>;
+    mousemove: (event: PointerEvent, dragContext: CommonArrowDragContext<CI>) => Action;
+    mouseup: (event: PointerEvent, dragContext: CommonArrowDragContext<CI>) => Action | null;
+}

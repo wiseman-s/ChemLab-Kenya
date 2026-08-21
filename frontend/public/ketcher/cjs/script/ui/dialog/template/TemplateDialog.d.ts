@@ -1,0 +1,65 @@
+/****************************************************************************
+ * Copyright 2021 EPAM Systems
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ ***************************************************************************/
+import { type FC } from 'react';
+import { type Template } from './TemplateTable';
+interface TemplateLibProps {
+    filter: string;
+    group: string;
+    lib: Array<Template>;
+    selected: Template | null;
+    mode: string;
+    tab: number;
+    initialTab: number;
+    saltsAndSolvents: Template[];
+    renderOptions?: any;
+    isMonomerCreationWizardActive?: boolean;
+}
+interface TemplateLibCallProps {
+    onAttach: (tmpl: Template) => void;
+    onCancel: () => void;
+    onChangeGroup: (group: string) => void;
+    onDelete: (tmpl: Template) => void;
+    onFilter: (filter: string) => void;
+    onOk: (res: any) => void;
+    onSelect: (res: any) => void;
+    onTabChange: (tab: number) => void;
+    functionalGroups: Template[];
+}
+declare type Props = TemplateLibProps & TemplateLibCallProps;
+declare const _default: import("react-redux").ConnectedComponent<FC<Props>, {
+    filter: string;
+    tab: number;
+    group: string;
+    lib: Template[];
+    selected: Template | null;
+    mode: string;
+    onOk: (res: any) => void;
+    initialTab: number;
+    saltsAndSolvents: Template[];
+    renderOptions?: any;
+    isMonomerCreationWizardActive?: boolean | undefined;
+    onAttach: (tmpl: Template) => void;
+    onCancel: () => void;
+    onChangeGroup: (group: string) => void;
+    onDelete: (tmpl: Template) => void;
+    onFilter: (filter: string) => void;
+    onSelect: (res: any) => void;
+    onTabChange: (tab: number) => void;
+    functionalGroups: Template[];
+    context?: import("react").Context<import("react-redux").ReactReduxContextValue<any, import("redux").UnknownAction> | null> | undefined;
+    store?: import("redux").Store<any, import("redux").UnknownAction, unknown> | undefined;
+}>;
+export default _default;
