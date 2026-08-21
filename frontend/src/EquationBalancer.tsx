@@ -1,145 +1,164 @@
+// src/EquationBalancer.tsx
 import React, { useState } from 'react';
-
-const API_URL = 'https://chemlab-kenya.onrender.com/';
-
-interface BalanceResult {
-  balanced_equation: string;
-  reactants: { formula: string; coefficient: number }[];
-  products: { formula: string; coefficient: number }[];
-  error?: string;
-}
-
-const EXAMPLE_EQUATIONS = [
-  'H2 + O2 -> H2O',
-  'CH4 + O2 -> CO2 + H2O',
-  'Fe + O2 -> Fe2O3',
-  'Na + Cl2 -> NaCl',
-  'C3H8 + O2 -> CO2 + H2O',
-];
 
 const EquationBalancer: React.FC = () => {
   const [equation, setEquation] = useState('CH4 + O2 -> CO2 + H2O');
-  const [result, setResult] = useState<BalanceResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const balance = async (eq: string) => {
+  const balanceEquation = async () => {
+    if (!equation.trim()) {
+      setError('Please enter an equation');
+      return;
+    }
+
     setLoading(true);
-    setError(null);
+    setError('');
     setResult(null);
+
     try {
-      const response = await fetch(`${API_URL}/balance_equation?equation=${encodeURIComponent(eq)}`);
-      const data = await response.json();
+      // Clean the equation: remove spaces, keep ->
+      const cleanEquation = equation
+        .replace(/\s/g, '')
+        .replace(/->/g, '->');
+
+      const response = await fetch(
+        `/balance_equation?equation=${encodeURIComponent(cleanEquation)}`
+      );
+
       if (!response.ok) {
-        throw new Error(data.detail || 'Could not balance this equation.');
+        const data = await response.json();
+        throw new Error(data.detail || 'Failed to balance equation');
       }
+
+      const data = await response.json();
       setResult(data);
-    } catch (e) {
-      setError((e as Error).message);
+    } catch (err) {
+      setError((err as Error).message);
     } finally {
       setLoading(false);
     }
   };
 
-  return (
-    <div>
-      <p style={{ color: '#666', fontSize: '0.9rem' }}>
-        Enter an unbalanced equation using <code>+</code> between compounds and <code>-&gt;</code> (or <code>=</code>) between reactants and products — e.g. <code>CH4 + O2 -&gt; CO2 + H2O</code>
-      </p>
+  const loadExample = (example: string) => {
+    setEquation(example);
+    setResult(null);
+    setError('');
+  };
 
-      <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-        <input
-          type="text"
-          value={equation}
-          onChange={(e) => setEquation(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && balance(equation)}
-          placeholder="e.g. CH4 + O2 -> CO2 + H2O"
-          style={{
-            flex: 1,
-            padding: '10px',
-            border: '2px solid #00897b',
-            borderRadius: '4px',
-            fontSize: '15px',
-            fontFamily: 'monospace'
-          }}
-        />
-        <button
-          onClick={() => balance(equation)}
-          disabled={loading}
-          style={{
-            padding: '10px 20px',
-            background: loading ? '#ccc' : '#00897b',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: loading ? 'not-allowed' : 'pointer',
-            fontSize: '15px'
-          }}
-        >
-          {loading ? '⏳ Balancing...' : '⚖️ Balance'}
-        </button>
+  return (
+    <div style={{ padding: '20px' }}>
+      <div style={{ marginBottom: '15px' }}>
+        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+          Enter Chemical Equation:
+        </label>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <input
+            type="text"
+            value={equation}
+            onChange={(e) => setEquation(e.target.value)}
+            placeholder="e.g., CH4 + O2 -> CO2 + H2O"
+            style={{
+              flex: 1,
+              padding: '10px',
+              border: '2px solid #00897b',
+              borderRadius: '4px',
+              fontSize: '16px',
+              fontFamily: 'monospace',
+            }}
+          />
+          <button
+            onClick={balanceEquation}
+            disabled={loading}
+            style={{
+              padding: '10px 25px',
+              background: loading ? '#80cbc4' : '#00897b',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              fontSize: '16px',
+              fontWeight: 'bold',
+            }}
+          >
+            {loading ? '⏳ Balancing...' : '⚖️ Balance'}
+          </button>
+        </div>
       </div>
 
-      <div style={{ marginTop: '10px' }}>
-        <strong style={{ fontSize: '0.85rem' }}>Try:</strong>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
-          {EXAMPLE_EQUATIONS.map((eq) => (
-            <button
-              key={eq}
-              onClick={() => { setEquation(eq); balance(eq); }}
-              style={{ padding: '4px 10px', background: '#e0e0e0', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', fontFamily: 'monospace' }}
-            >
-              {eq}
-            </button>
-          ))}
+      <div>
+        <strong>Quick Examples:</strong>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '5px' }}>
+          <button onClick={() => loadExample('CH4 + O2 -> CO2 + H2O')} style={exampleStyle}>
+            🔥 CH4 + O2
+          </button>
+          <button onClick={() => loadExample('Fe + O2 -> Fe2O3')} style={exampleStyle}>
+            🪨 Fe + O2
+          </button>
+          <button onClick={() => loadExample('H2 + O2 -> H2O')} style={exampleStyle}>
+            💧 H2 + O2
+          </button>
+          <button onClick={() => loadExample('Na + Cl2 -> NaCl')} style={exampleStyle}>
+            🧂 Na + Cl2
+          </button>
+          <button onClick={() => loadExample('C3H8 + O2 -> CO2 + H2O')} style={exampleStyle}>
+            🔥 C3H8 + O2
+          </button>
         </div>
       </div>
 
       {error && (
-        <div style={{ marginTop: '15px', padding: '12px', background: '#ffebee', borderRadius: '6px', color: '#d32f2f', fontSize: '0.9rem' }}>
+        <div style={{
+          marginTop: '15px',
+          padding: '12px',
+          background: '#ffebee',
+          borderRadius: '4px',
+          color: '#d32f2f',
+        }}>
           ❌ {error}
         </div>
       )}
 
-      {result && (
-        <div style={{ marginTop: '15px' }}>
+      {result && !error && (
+        <div style={{
+          marginTop: '15px',
+          padding: '15px',
+          background: '#e8f5e9',
+          borderRadius: '4px',
+          border: '1px solid #00897b',
+        }}>
+          <h4 style={{ color: '#00695c', margin: 0, marginBottom: '10px' }}>
+            ✅ Balanced Equation
+          </h4>
           <div style={{
-            padding: '20px',
-            background: '#e8f5e9',
-            borderRadius: '8px',
-            fontSize: '1.2rem',
+            fontSize: '20px',
             fontFamily: 'monospace',
+            padding: '10px',
+            background: 'white',
+            borderRadius: '4px',
             textAlign: 'center',
-            color: '#00695c',
-            fontWeight: 600
           }}>
             {result.balanced_equation}
           </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginTop: '15px' }}>
-            <div>
-              <strong style={{ fontSize: '0.85rem', color: '#666' }}>REACTANTS</strong>
-              {result.reactants.map((r) => (
-                <div key={r.formula} style={{ background: 'white', padding: '8px 12px', borderRadius: '4px', marginTop: '6px' }}>
-                  <span style={{ fontFamily: 'monospace' }}>{r.formula}</span>
-                  <span style={{ float: 'right', fontWeight: 600 }}>× {r.coefficient}</span>
-                </div>
-              ))}
-            </div>
-            <div>
-              <strong style={{ fontSize: '0.85rem', color: '#666' }}>PRODUCTS</strong>
-              {result.products.map((p) => (
-                <div key={p.formula} style={{ background: 'white', padding: '8px 12px', borderRadius: '4px', marginTop: '6px' }}>
-                  <span style={{ fontFamily: 'monospace' }}>{p.formula}</span>
-                  <span style={{ float: 'right', fontWeight: 600 }}>× {p.coefficient}</span>
-                </div>
-              ))}
-            </div>
+          <div style={{ marginTop: '10px', fontSize: '0.9rem', color: '#666' }}>
+            <strong>Reactants:</strong> {result.reactants?.map((r: any) => `${r.coefficient}${r.formula}`).join(' + ')}
+            <br />
+            <strong>Products:</strong> {result.products?.map((p: any) => `${p.coefficient}${p.formula}`).join(' + ')}
           </div>
         </div>
       )}
     </div>
   );
+};
+
+const exampleStyle: React.CSSProperties = {
+  padding: '5px 15px',
+  background: '#e0e0e0',
+  border: 'none',
+  borderRadius: '4px',
+  cursor: 'pointer',
+  fontSize: '14px',
 };
 
 export default EquationBalancer;
