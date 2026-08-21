@@ -5,9 +5,10 @@ import {
   calculateElementComposition,
   type ElementComposition,
 } from '../utils/formulaComposition';
+import { API_URL } from '../config';
 
-// ✅ Backend API URL - pointing to your FastAPI server
-const API_BASE = 'http://localhost:5000/api';
+// ✅ Backend API URL - using config
+const API_BASE = `${API_URL}/api`;
 
 async function searchCompoundBackend(name: string) {
   const response = await fetch(
