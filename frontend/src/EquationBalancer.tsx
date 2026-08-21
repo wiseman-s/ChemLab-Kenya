@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const API_URL = 'http://localhost:5000';
+const API_URL = 'https://chemlab-kenya.onrender.com/';
 
 interface BalanceResult {
   balanced_equation: string;
