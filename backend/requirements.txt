@@ -6,3 +6,4 @@ sympy
 python-multipart
 requests
 certifi
+rdkit
