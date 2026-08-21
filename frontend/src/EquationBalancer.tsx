@@ -18,13 +18,14 @@ const EquationBalancer: React.FC = () => {
     setResult(null);
 
     try {
-      // Clean the equation: remove spaces, keep ->
+      // Clean the equation: remove spaces
       const cleanEquation = equation
         .replace(/\s/g, '')
         .replace(/->/g, '->');
 
+      // IMPORTANT: Use the correct endpoint without double slash
       const response = await fetch(
-        `/balance_equation?equation=${encodeURIComponent(cleanEquation)}`
+        `https://chemlab-kenya.onrender.com/balance_equation?equation=${encodeURIComponent(cleanEquation)}`
       );
 
       if (!response.ok) {
@@ -49,11 +50,16 @@ const EquationBalancer: React.FC = () => {
 
   return (
     <div style={{ padding: '20px' }}>
+      <h3 style={{ color: '#00695c', marginTop: 0 }}>⚖️ Chemical Equation Balancer</h3>
+      <p style={{ color: '#666', marginBottom: '15px' }}>
+        Enter a chemical equation and get the balanced version.
+      </p>
+
       <div style={{ marginBottom: '15px' }}>
         <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-          Enter Chemical Equation:
+          Equation:
         </label>
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <input
             type="text"
             value={equation}
@@ -61,12 +67,15 @@ const EquationBalancer: React.FC = () => {
             placeholder="e.g., CH4 + O2 -> CO2 + H2O"
             style={{
               flex: 1,
+              minWidth: '250px',
               padding: '10px',
               border: '2px solid #00897b',
               borderRadius: '4px',
               fontSize: '16px',
               fontFamily: 'monospace',
+              outline: 'none',
             }}
+            onKeyDown={(e) => e.key === 'Enter' && balanceEquation()}
           />
           <button
             onClick={balanceEquation}
@@ -115,6 +124,7 @@ const EquationBalancer: React.FC = () => {
           background: '#ffebee',
           borderRadius: '4px',
           color: '#d32f2f',
+          border: '1px solid #ef9a9a',
         }}>
           ❌ {error}
         </div>
@@ -132,12 +142,13 @@ const EquationBalancer: React.FC = () => {
             ✅ Balanced Equation
           </h4>
           <div style={{
-            fontSize: '20px',
+            fontSize: '22px',
             fontFamily: 'monospace',
-            padding: '10px',
+            padding: '12px',
             background: 'white',
             borderRadius: '4px',
             textAlign: 'center',
+            border: '1px solid #c8e6c9',
           }}>
             {result.balanced_equation}
           </div>
