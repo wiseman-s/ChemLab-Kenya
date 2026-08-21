@@ -4,8 +4,7 @@
 // Import functions from this file anywhere in your React components,
 // e.g.  import { analyzeMolecule, balanceEquation } from "./api";
 
-const API_URL: string =
-  process.env.REACT_APP_API_URL || "https://chemlab-kenya.onrender.com";
+const API_URL: string = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 // ------------------------------------------------------------
 // Shared types
