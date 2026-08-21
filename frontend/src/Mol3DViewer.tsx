@@ -1,6 +1,7 @@
 // src/Mol3DViewer.tsx
 
 import React, { useEffect, useRef, useState } from 'react';
+import { API_URL } from './config';
 
 interface Mol3DViewerProps {
   smiles: string;
@@ -101,7 +102,8 @@ const Mol3DViewer: React.FC<Mol3DViewerProps> = ({
       setError(null);
       
       try {
-        const url = `http://localhost:5000/generate_3d?smiles=${encodeURIComponent(smiles)}`;
+        // ✅ FIXED: Use API_URL from config
+        const url = `${API_URL}/generate_3d?smiles=${encodeURIComponent(smiles)}`;
         console.log('📡 Fetching:', url);
         
         const response = await fetch(url);
