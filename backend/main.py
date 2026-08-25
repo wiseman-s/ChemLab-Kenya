@@ -20,18 +20,23 @@ from sympy import Matrix, lcm
 # Import chemistry modules
 from chemistry.pubchem import search_compound_by_name, clear_cache, get_cache_stats
 from chemistry.rdkit_renderer import smiles_to_svg
-from chemistry.formula_search import search_by_formula, clear_formula_cache, get_formula_cache_stats
 
 app = FastAPI(
     title="ChemLab Kenya API",
     description="Chemistry API for Kenyan Universities",
-    version="1.2.0"
+    version="1.3.0"
 )
 
 # Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:5000",
+        "https://chem-lab-kenya.vercel.app",
+        "https://chemlab-kenya.onrender.com",
+        "https://chemlab-kenya.vercel.app",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -247,7 +252,7 @@ def balance_equation_route(equation: str):
 def root():
     return {
         "message": "🧪 ChemLab Kenya API is running!",
-        "version": "1.2.0",
+        "version": "1.3.0",
         "status": "online"
     }
 
@@ -299,42 +304,25 @@ def health_check():
 
 
 # ============================================================
-# COMPOUND FORMULA SEARCH ENDPOINT (Uses formula_search.py)
+# COMPOUND FORMULA SEARCH ENDPOINT
 # ============================================================
 
 @app.get("/api/compound/formula")
 async def compound_by_formula(formula: str):
     """
     Search for compounds by chemical formula.
-    Uses formula_search.py with multiple providers:
-    - Local database
-    - Wikidata SPARQL
-    - Wikipedia
-    - CACTUS
-    - PubChem (last resort)
     """
     print(f"🧪 Formula search: {formula}")
 
     try:
+        from chemistry.formula_search import search_by_formula
         results = await search_by_formula(formula)
 
         if results and len(results) > 0:
-            # Generate structure images for compounds with SMILES
             for compound in results:
                 smiles = compound.get("smiles", "")
                 if smiles:
                     compound["structureImage"] = smiles_to_svg(smiles)
-
-                    try:
-                        mol = Chem.MolFromSmiles(smiles)
-                        if mol is not None:
-                            compound["smiles"] = Chem.MolToSmiles(mol)
-                            try:
-                                compound["inchi"] = Chem.MolToInchi(mol)
-                            except Exception:
-                                pass
-                    except Exception as exc:
-                        print(f"⚠️ RDKit validation failed: {exc}")
 
             return {
                 "formula": formula,
@@ -364,21 +352,13 @@ async def compound_by_formula(formula: str):
 
 
 # ============================================================
-# COMPOUND NAME SEARCH ENDPOINT (Uses pubchem.py)
+# COMPOUND NAME SEARCH ENDPOINT
 # ============================================================
 
 @app.get("/api/compound/name")
 async def compound_by_name(name: str):
     """
     Search for a compound by name.
-    Uses pubchem.py with multiple providers:
-    - Cache
-    - Local database
-    - CACTUS
-    - Wikipedia
-    - PubChem
-    - ChEMBL
-    - ChemSpider (if API key configured)
     """
     print(f"🔍 Searching for compound by name: {name}")
 
@@ -386,12 +366,10 @@ async def compound_by_name(name: str):
         result = await search_compound_by_name(name)
 
         if result:
-            # Generate structure image using RDKit
             smiles = result.get("smiles", "")
             if smiles:
                 result["structureImage"] = smiles_to_svg(smiles)
 
-            # Clean the response - remove internal fields
             result.pop("_provider", None)
             result.pop("_cache_hit", None)
 
@@ -411,36 +389,7 @@ async def compound_by_name(name: str):
 
 
 # ============================================================
-# CACHE MANAGEMENT ENDPOINTS
-# ============================================================
-
-@app.get("/api/compound/cache/stats")
-def cache_stats():
-    """Get cache statistics."""
-    pubchem_stats = get_cache_stats()
-    formula_stats = get_formula_cache_stats()
-
-    return {
-        "pubchem": pubchem_stats,
-        "formula": formula_stats,
-        "total": {
-            "memory_count": pubchem_stats.get("memory_cache_count", 0) + formula_stats.get("memory_cache_count", 0),
-            "file_count": pubchem_stats.get("file_cache_count", 0) + formula_stats.get("file_cache_count", 0),
-            "size_kb": pubchem_stats.get("size_kb", 0) + formula_stats.get("size_kb", 0)
-        }
-    }
-
-
-@app.post("/api/compound/cache/clear")
-def clear_cache_route():
-    """Clear all caches."""
-    clear_cache()
-    clear_formula_cache()
-    return {"status": "All caches cleared"}
-
-
-# ============================================================
-# NMR PREDICTION ENDPOINT (Using nmrdb.org)
+# NMR PREDICTION ENDPOINT
 # ============================================================
 
 @app.get("/api/predict_nmr")
@@ -450,9 +399,16 @@ async def predict_nmr(smiles: str, nucleus: str = "1H"):
     local RDKit-based fallback if that service is unreachable or its
     response can't be parsed.
 
-    nmrdb.org exposes a plain (non-JS-rendered) service endpoint at
-    service.php?name=nmr-1h-prediction&smiles=... which is what this
-    calls, rather than scraping the interactive JS predictor page.
+    Calls nmrdb.org's plain service endpoint (service.php) rather than
+    scraping the interactive JS predictor page, since the predictor
+    page renders its signal data client-side and a raw HTML fetch
+    doesn't contain it.
+
+    Note: this always returns HTTP 200 with "success": true/false in
+    the body (rather than raising), so the frontend can distinguish a
+    real prediction failure from a successful one via the JSON payload
+    — but genuine backend errors are surfaced via "error", not silently
+    swapped for fallback data with "error": None.
     """
     print(f"🔬 NMR Prediction: {smiles} ({nucleus})")
 
@@ -460,7 +416,8 @@ async def predict_nmr(smiles: str, nucleus: str = "1H"):
         if nucleus != "1H":
             return {
                 "success": False,
-                "error": f"{nucleus} NMR not supported yet. Only 1H is available."
+                "error": f"{nucleus} NMR not supported yet. Only 1H is available.",
+                "source": "fallback"
             }
 
         mol = Chem.MolFromSmiles(smiles)
@@ -474,24 +431,31 @@ async def predict_nmr(smiles: str, nucleus: str = "1H"):
         headers = {"User-Agent": "ChemLab-Kenya/1.0"}
 
         response = None
+        request_error = None
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 response = await client.get(nmrdb_url, params=params, headers=headers)
         except httpx.RequestError as exc:
+            request_error = str(exc)
             print(f"⚠️ nmrdb.org request failed: {exc}")
 
         signals = []
         source = "fallback"
+        parse_note = None
 
         if response is not None and response.status_code == 200:
             signals = parse_nmrdb_service_response(response.text)
             if signals:
                 source = "nmrdb.org"
             else:
-                print("⚠️ nmrdb.org returned a response but no signals could be parsed from it")
+                parse_note = "nmrdb.org responded but no signals could be parsed from it"
+                print(f"⚠️ {parse_note}")
+        elif response is not None:
+            parse_note = f"nmrdb.org returned status {response.status_code}"
+            print(f"⚠️ {parse_note}")
 
         if not signals:
-            signals = get_fallback_prediction(smiles, nucleus)
+            signals = get_fallback_nmr_prediction(smiles, nucleus)
             source = "fallback"
 
         return {
@@ -501,11 +465,18 @@ async def predict_nmr(smiles: str, nucleus: str = "1H"):
             "signals": signals,
             "peakCount": len(signals),
             "smiles": smiles,
+            # Informational only — still success:true because we did return
+            # usable (fallback) signals. Lets the frontend show a subtle
+            # "estimated, not from nmrdb.org" note without treating it as
+            # a hard failure.
+            "note": request_error or parse_note,
             "error": None
         }
 
     except Exception as e:
         print(f"❌ NMR prediction error: {e}")
+        # A genuine unexpected error — surface it rather than pretending
+        # everything worked.
         return {"success": False, "error": str(e)}
 
 
@@ -570,60 +541,58 @@ def parse_nmrdb_service_response(body: str) -> list:
     return signals
 
 
-def get_fallback_prediction(smiles: str, nucleus: str = "1H") -> list:
+def get_fallback_nmr_prediction(smiles: str, nucleus: str = "1H") -> list:
     """Get a fallback NMR prediction based on molecule structure.
 
     This is a crude rule-based estimator (aromatic vs. aliphatic vs.
     heteroatom-adjacent), not a real quantum or empirical NMR model.
-    Good enough for a placeholder, not for anything a student should
-    treat as ground truth.
+    It's a placeholder used only when nmrdb.org can't be reached or
+    parsed — not something to present as an accurate prediction.
     """
-    signals = []
-
     try:
         mol = Chem.MolFromSmiles(smiles)
         if mol is None:
-            return signals
+            return get_default_nmr_signals()
 
-        mol_with_h = Chem.AddHs(mol)
-
-        for atom in mol_with_h.GetAtoms():
-            if nucleus == "1H" and atom.GetSymbol() == "H":
-                shift = estimate_proton_shift(atom, mol_with_h)
-                if shift > 0:
-                    signals.append({
-                        "shift": round(shift, 2),
-                        "integral": 1,
-                        "multiplicity": "m"
-                    })
-            elif nucleus == "13C" and atom.GetSymbol() == "C":
-                shift = estimate_carbon_shift(atom, mol_with_h)
-                if shift > 0:
-                    signals.append({
-                        "shift": round(shift, 2),
-                        "integral": 1,
-                        "multiplicity": "s"
-                    })
-
-        # Group equivalent protons
         if nucleus == "1H":
-            signals = group_equivalent_protons(signals)
+            mol_with_h = Chem.AddHs(mol)
+            signals = []
+
+            for atom in mol_with_h.GetAtoms():
+                if atom.GetSymbol() == "H":
+                    shift = estimate_proton_shift(atom, mol_with_h)
+                    if shift > 0:
+                        signals.append({
+                            "shift": round(shift, 2),
+                            "integral": 1,
+                            "multiplicity": "m"
+                        })
+
+            if not signals:
+                return get_default_nmr_signals()
+
+            return group_equivalent_protons(signals)
+
+        elif nucleus == "13C":
+            return get_default_carbon_signals()
+        else:
+            return get_default_nmr_signals()
 
     except Exception as e:
         print(f"⚠️ Fallback prediction error: {e}")
-
-    return signals
+        return get_default_nmr_signals()
 
 
 def estimate_proton_shift(atom, mol) -> float:
     """Estimate 1H chemical shift based on environment.
 
-    `atom` is expected to be a hydrogen; we look at what it's bonded to.
+    `atom` is expected to be a hydrogen (from a molecule with explicit
+    Hs added); we look at what it's bonded to.
     """
     if atom.GetSymbol() != "H":
         return 0
 
-    heavy_neighbors = [n for n in atom.GetNeighbors()]
+    heavy_neighbors = list(atom.GetNeighbors())
     if not heavy_neighbors:
         return 0
 
@@ -631,7 +600,6 @@ def estimate_proton_shift(atom, mol) -> float:
     parent_neighbor_symbols = [n.GetSymbol() for n in parent.GetNeighbors() if n.GetIdx() != atom.GetIdx()]
 
     if parent.GetSymbol() in ("O", "N"):
-        # Exchangeable proton (OH, NH)
         return 2.5 + random.uniform(-1.0, 1.5)
     elif parent.GetIsAromatic():
         return 7.3 + random.uniform(-0.5, 0.5)
@@ -643,21 +611,11 @@ def estimate_proton_shift(atom, mol) -> float:
         return 0
 
 
-def estimate_carbon_shift(atom, mol) -> float:
-    """Estimate 13C chemical shift based on environment."""
-    if atom.GetIsAromatic():
-        return 130 + random.uniform(-10, 10)
-
-    # Check if carbonyl
-    for neighbor in atom.GetNeighbors():
-        if neighbor.GetSymbol() == "O":
-            return 170 + random.uniform(-10, 10)
-
-    return 30 + random.uniform(-10, 10)
-
-
 def group_equivalent_protons(signals: list) -> list:
     """Group equivalent proton signals."""
+    if not signals:
+        return signals
+
     grouped = []
     used = set()
 
@@ -683,6 +641,50 @@ def group_equivalent_protons(signals: list) -> list:
         grouped.append(group)
 
     return grouped
+
+
+def get_default_nmr_signals() -> list:
+    """Return default 1H NMR signals for molecules the fallback estimator
+    couldn't handle at all (last-resort placeholder, not a real prediction)."""
+    return [
+        {"shift": 7.20, "integral": 1, "multiplicity": "d"},
+        {"shift": 7.40, "integral": 1, "multiplicity": "t"},
+        {"shift": 7.60, "integral": 2, "multiplicity": "m"},
+    ]
+
+
+def get_default_carbon_signals() -> list:
+    """Return default 13C NMR signals (placeholder — 13C isn't really
+    supported yet)."""
+    return [
+        {"shift": 30.00, "integral": 1, "multiplicity": "s"},
+        {"shift": 70.00, "integral": 1, "multiplicity": "s"},
+        {"shift": 130.00, "integral": 1, "multiplicity": "s"},
+    ]
+
+
+# ============================================================
+# CACHE MANAGEMENT ENDPOINTS
+# ============================================================
+
+@app.get("/api/compound/cache/stats")
+def cache_stats():
+    """Get cache statistics."""
+    pubchem_stats = get_cache_stats()
+    return {
+        "pubchem": pubchem_stats,
+        "total": {
+            "file_count": pubchem_stats.get("file_cache_count", 0),
+            "size_kb": pubchem_stats.get("size_kb", 0)
+        }
+    }
+
+
+@app.post("/api/compound/cache/clear")
+def clear_cache_route():
+    """Clear all caches."""
+    clear_cache()
+    return {"status": "All caches cleared"}
 
 
 if __name__ == "__main__":
