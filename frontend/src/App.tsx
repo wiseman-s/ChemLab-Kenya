@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Analytics } from '@vercel/analytics/react';
 import KetcherEditor from './KetcherEditor';
 import Mol3DViewer from './Mol3DViewer';
 import NMRViewer from './NMRViewer';
@@ -152,8 +153,15 @@ function App() {
     analyzeMolecule('CCO');
   }, []);
 
+  // Set document title
+  useEffect(() => {
+    document.title = 'ChemLab Kenya - Chemistry & Physics Software';
+  }, []);
+
   return (
     <div className="App">
+      {/* Vercel Analytics - tracks page views */}
+      <Analytics />
 
       {/* Header */}
       <header>
