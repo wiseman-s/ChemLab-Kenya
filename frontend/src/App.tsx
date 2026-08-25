@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { Analytics } from '@vercel/analytics/react';
 import KetcherEditor from './KetcherEditor';
 import Mol3DViewer from './Mol3DViewer';
 import NMRViewer from './NMRViewer';
@@ -160,8 +159,6 @@ function App() {
 
   return (
     <div className="App">
-      {/* Vercel Analytics - tracks page views */}
-      <Analytics />
 
       {/* Header */}
       <header>
@@ -668,7 +665,7 @@ function App() {
           }}
         >
           <h4 style={{ color: '#00695c' }}>
-             Kenya Curriculum Integration
+            🇰🇪 Kenya Curriculum Integration
           </h4>
 
           <p>This tool is designed for:</p>
