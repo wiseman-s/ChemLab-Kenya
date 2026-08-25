@@ -3,18 +3,15 @@
     padding: 0;
     box-sizing: border-box;
 }
-
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
     background: #f0f4f8;
 }
-
 .App {
     max-width: 1600px;
     margin: 0 auto;
     padding: 20px;
 }
-
 header {
     background: linear-gradient(135deg, #00695c, #00897b);
     color: white;
@@ -23,46 +20,111 @@ header {
     margin-bottom: 30px;
     box-shadow: 0 4px 6px rgba(0,0,0,0.1);
 }
-
 header h1 {
     font-size: 2.5rem;
     margin-bottom: 10px;
 }
-
 header p {
     font-size: 1.1rem;
     opacity: 0.9;
 }
-
 h3 {
     margin-bottom: 15px;
     color: #00695c;
 }
-
 h4 {
     color: #00695c;
 }
-
 main {
     display: flex;
     flex-direction: column;
     gap: 20px;
 }
-
 button {
     cursor: pointer;
+}
+
+/* Nav tabs: horizontal scroll strip instead of wrapping, so it stays
+   tidy at any width instead of breaking into uneven rows. */
+nav {
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+nav::-webkit-scrollbar {
+    height: 4px;
+}
+nav::-webkit-scrollbar-thumb {
+    background: #cfd8dc;
+    border-radius: 4px;
 }
 
 @media (max-width: 1024px) {
     .App {
         padding: 10px;
     }
-    
+
     header h1 {
         font-size: 1.8rem;
     }
-    
-    .App > div {
+
+    /* Collapse ANY inline grid (analyzer layout, property card grids,
+       etc.) to a single column, regardless of how deeply it's nested.
+       These grids are set as inline styles in App.tsx rather than CSS
+       classes, so we match on the style attribute itself. */
+    [style*="grid-template-columns"] {
         grid-template-columns: 1fr !important;
+    }
+}
+
+@media (max-width: 768px) {
+    header {
+        padding: 20px;
+    }
+
+    header h1 {
+        font-size: 1.5rem;
+    }
+
+    header p {
+        font-size: 0.95rem;
+    }
+
+    /* Scrollable single-row tab strip instead of wrapping into a
+       ragged multi-line block on narrow screens. */
+    nav {
+        flex-wrap: nowrap !important;
+        overflow-x: auto;
+        justify-content: flex-start;
+    }
+
+    nav button {
+        padding: 10px 14px !important;
+        font-size: 13px !important;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+}
+
+@media (max-width: 480px) {
+    .App {
+        padding: 8px;
+    }
+
+    header {
+        padding: 16px;
+        border-radius: 8px;
+    }
+
+    header h1 {
+        font-size: 1.3rem;
+    }
+
+    header p {
+        font-size: 0.85rem;
+    }
+
+    nav button {
+        padding: 8px 12px !important;
+        font-size: 12px !important;
     }
 }
