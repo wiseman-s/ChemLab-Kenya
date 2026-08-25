@@ -668,7 +668,7 @@ function App() {
           }}
         >
           <h4 style={{ color: '#00695c' }}>
-            🇰🇪 Kenya Curriculum Integration
+             Kenya Curriculum Integration
           </h4>
 
           <p>This tool is designed for:</p>
