@@ -97,6 +97,10 @@ const MolarityCalculator: React.FC = () => {
     setResult(m / l);
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') calculate();
+  };
+
   const clearFields = () => {
     setMoles('');
     setLiters('');
@@ -120,6 +124,7 @@ const MolarityCalculator: React.FC = () => {
             type="number"
             value={moles}
             onChange={(e) => setMoles(e.target.value)}
+            onKeyDown={handleKeyDown}
             placeholder="e.g., 2.5"
             style={inputStyle}
           />
@@ -133,6 +138,7 @@ const MolarityCalculator: React.FC = () => {
             type="number"
             value={liters}
             onChange={(e) => setLiters(e.target.value)}
+            onKeyDown={handleKeyDown}
             placeholder="e.g., 1.0"
             style={inputStyle}
           />
@@ -148,13 +154,13 @@ const MolarityCalculator: React.FC = () => {
         </div>
         
         {error && (
-          <div style={{ color: '#d32f2f', padding: '10px', background: '#ffebee', borderRadius: '4px' }}>
+          <div role="alert" aria-live="polite" style={{ color: '#d32f2f', padding: '10px', background: '#ffebee', borderRadius: '4px' }}>
             ❌ {error}
           </div>
         )}
         
         {result !== null && !error && (
-          <div style={{ padding: '15px', background: '#e8f5e9', borderRadius: '4px' }}>
+          <div aria-live="polite" style={{ padding: '15px', background: '#e8f5e9', borderRadius: '4px' }}>
             <strong>Molarity:</strong> {result.toFixed(4)} M (mol/L)
           </div>
         )}
@@ -172,7 +178,7 @@ const MolesMassCalculator: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [molarMass, setMolarMass] = useState<number | null>(null);
 
-  const calculateMolarMass = () => {
+  const calculateMolarMassValue = () => {
     setError(null);
     try {
       const mass = parseFormula(formula).totalMass;
@@ -192,7 +198,7 @@ const MolesMassCalculator: React.FC = () => {
       return;
     }
     
-    const mm = calculateMolarMass();
+    const mm = calculateMolarMassValue();
     if (mm === null) return;
     
     const massResult = m * mm;
@@ -207,7 +213,7 @@ const MolesMassCalculator: React.FC = () => {
       return;
     }
     
-    const mm = calculateMolarMass();
+    const mm = calculateMolarMassValue();
     if (mm === null) return;
     
     const molesResult = m / mm;
@@ -239,11 +245,12 @@ const MolesMassCalculator: React.FC = () => {
             type="text"
             value={formula}
             onChange={(e) => setFormula(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') calculateMolarMassValue(); }}
             placeholder="e.g., H2O, NaCl, Ca(OH)2"
             style={inputStyle}
           />
           <button
-            onClick={calculateMolarMass}
+            onClick={calculateMolarMassValue}
             style={{ ...buttonStyle, marginTop: '5px', padding: '5px 15px', fontSize: '14px' }}
           >
             Get Molar Mass
@@ -264,14 +271,16 @@ const MolesMassCalculator: React.FC = () => {
               type="number"
               value={moles}
               onChange={(e) => setMoles(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') calculateMolesToMass(); }}
               placeholder="e.g., 2.5"
               style={inputStyle}
             />
             <button
               onClick={calculateMolesToMass}
+              aria-label="Calculate mass from moles"
               style={{ ...buttonStyle, marginTop: '5px', width: '100%' }}
             >
-              → Mass
+              Calculate Mass
             </button>
           </div>
           
@@ -283,14 +292,16 @@ const MolesMassCalculator: React.FC = () => {
               type="number"
               value={mass}
               onChange={(e) => setMass(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') calculateMassToMoles(); }}
               placeholder="e.g., 50.0"
               style={inputStyle}
             />
             <button
               onClick={calculateMassToMoles}
+              aria-label="Calculate moles from mass"
               style={{ ...buttonStyle, marginTop: '5px', width: '100%' }}
             >
-              → Moles
+              Calculate Moles
             </button>
           </div>
         </div>
@@ -300,13 +311,13 @@ const MolesMassCalculator: React.FC = () => {
         </button>
         
         {error && (
-          <div style={{ color: '#d32f2f', padding: '10px', background: '#ffebee', borderRadius: '4px' }}>
+          <div role="alert" aria-live="polite" style={{ color: '#d32f2f', padding: '10px', background: '#ffebee', borderRadius: '4px' }}>
             ❌ {error}
           </div>
         )}
         
         {result && !error && (
-          <div style={{ padding: '15px', background: '#e8f5e9', borderRadius: '4px' }}>
+          <div aria-live="polite" style={{ padding: '15px', background: '#e8f5e9', borderRadius: '4px' }}>
             <strong>Result:</strong> {result.value.toFixed(4)} {result.unit}
           </div>
         )}
@@ -360,6 +371,10 @@ const DilutionCalculator: React.FC = () => {
     setResult({ variable: resultVar, value: resultValue });
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') calculate();
+  };
+
   const clearFields = () => {
     setC1('');
     setV1('');
@@ -385,6 +400,7 @@ const DilutionCalculator: React.FC = () => {
             type="number"
             value={c1}
             onChange={(e) => setC1(e.target.value)}
+            onKeyDown={handleKeyDown}
             placeholder="e.g., 2.0"
             style={inputStyle}
           />
@@ -398,6 +414,7 @@ const DilutionCalculator: React.FC = () => {
             type="number"
             value={v1}
             onChange={(e) => setV1(e.target.value)}
+            onKeyDown={handleKeyDown}
             placeholder="e.g., 1.0"
             style={inputStyle}
           />
@@ -411,6 +428,7 @@ const DilutionCalculator: React.FC = () => {
             type="number"
             value={c2}
             onChange={(e) => setC2(e.target.value)}
+            onKeyDown={handleKeyDown}
             placeholder="e.g., 0.5"
             style={inputStyle}
           />
@@ -424,6 +442,7 @@ const DilutionCalculator: React.FC = () => {
             type="number"
             value={v2}
             onChange={(e) => setV2(e.target.value)}
+            onKeyDown={handleKeyDown}
             placeholder="e.g., 4.0"
             style={inputStyle}
           />
@@ -440,13 +459,13 @@ const DilutionCalculator: React.FC = () => {
       </div>
       
       {error && (
-        <div style={{ color: '#d32f2f', padding: '10px', background: '#ffebee', borderRadius: '4px', marginTop: '15px' }}>
+        <div role="alert" aria-live="polite" style={{ color: '#d32f2f', padding: '10px', background: '#ffebee', borderRadius: '4px', marginTop: '15px' }}>
           ❌ {error}
         </div>
       )}
       
       {result && !error && (
-        <div style={{ padding: '15px', background: '#e8f5e9', borderRadius: '4px', marginTop: '15px' }}>
+        <div aria-live="polite" style={{ padding: '15px', background: '#e8f5e9', borderRadius: '4px', marginTop: '15px' }}>
           <strong>{result.variable} =</strong> {result.value.toFixed(4)}
         </div>
       )}
@@ -506,6 +525,10 @@ const GasLawCalculator: React.FC = () => {
     setResult({ variable: resultVar, value: resultValue, unit });
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') calculate();
+  };
+
   const clearFields = () => {
     setPressure('');
     setVolume('');
@@ -531,6 +554,7 @@ const GasLawCalculator: React.FC = () => {
             type="number"
             value={pressure}
             onChange={(e) => setPressure(e.target.value)}
+            onKeyDown={handleKeyDown}
             placeholder="e.g., 1.0"
             style={inputStyle}
           />
@@ -544,6 +568,7 @@ const GasLawCalculator: React.FC = () => {
             type="number"
             value={volume}
             onChange={(e) => setVolume(e.target.value)}
+            onKeyDown={handleKeyDown}
             placeholder="e.g., 22.4"
             style={inputStyle}
           />
@@ -557,6 +582,7 @@ const GasLawCalculator: React.FC = () => {
             type="number"
             value={moles}
             onChange={(e) => setMoles(e.target.value)}
+            onKeyDown={handleKeyDown}
             placeholder="e.g., 1.0"
             style={inputStyle}
           />
@@ -570,6 +596,7 @@ const GasLawCalculator: React.FC = () => {
             type="number"
             value={temperature}
             onChange={(e) => setTemperature(e.target.value)}
+            onKeyDown={handleKeyDown}
             placeholder="e.g., 273.15"
             style={inputStyle}
           />
@@ -586,13 +613,13 @@ const GasLawCalculator: React.FC = () => {
       </div>
       
       {error && (
-        <div style={{ color: '#d32f2f', padding: '10px', background: '#ffebee', borderRadius: '4px', marginTop: '15px' }}>
+        <div role="alert" aria-live="polite" style={{ color: '#d32f2f', padding: '10px', background: '#ffebee', borderRadius: '4px', marginTop: '15px' }}>
           ❌ {error}
         </div>
       )}
       
       {result && !error && (
-        <div style={{ padding: '15px', background: '#e8f5e9', borderRadius: '4px', marginTop: '15px' }}>
+        <div aria-live="polite" style={{ padding: '15px', background: '#e8f5e9', borderRadius: '4px', marginTop: '15px' }}>
           <strong>{result.variable} =</strong> {result.value.toFixed(4)} {result.unit}
         </div>
       )}
