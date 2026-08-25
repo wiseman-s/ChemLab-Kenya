@@ -3,6 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "description": "ChemLab Kenya - Chemistry and Physics Software for Kenyan Schools and Universities",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
