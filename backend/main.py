@@ -1,4 +1,5 @@
 import re
+import random
 from fractions import Fraction
 from math import gcd
 from functools import reduce
@@ -313,17 +314,17 @@ async def compound_by_formula(formula: str):
     - PubChem (last resort)
     """
     print(f"🧪 Formula search: {formula}")
-    
+
     try:
         results = await search_by_formula(formula)
-        
+
         if results and len(results) > 0:
             # Generate structure images for compounds with SMILES
             for compound in results:
                 smiles = compound.get("smiles", "")
                 if smiles:
                     compound["structureImage"] = smiles_to_svg(smiles)
-                    
+
                     try:
                         mol = Chem.MolFromSmiles(smiles)
                         if mol is not None:
@@ -334,7 +335,7 @@ async def compound_by_formula(formula: str):
                                 pass
                     except Exception as exc:
                         print(f"⚠️ RDKit validation failed: {exc}")
-            
+
             return {
                 "formula": formula,
                 "compounds": results,
@@ -342,7 +343,7 @@ async def compound_by_formula(formula: str):
                 "providerAvailable": True,
                 "error": None,
             }
-        
+
         return {
             "formula": formula,
             "compounds": [],
@@ -350,7 +351,7 @@ async def compound_by_formula(formula: str):
             "providerAvailable": False,
             "error": f"No compounds found for formula: {formula}",
         }
-        
+
     except Exception as e:
         print(f"❌ Error searching formula: {e}")
         return {
@@ -380,27 +381,27 @@ async def compound_by_name(name: str):
     - ChemSpider (if API key configured)
     """
     print(f"🔍 Searching for compound by name: {name}")
-    
+
     try:
         result = await search_compound_by_name(name)
-        
+
         if result:
             # Generate structure image using RDKit
             smiles = result.get("smiles", "")
             if smiles:
                 result["structureImage"] = smiles_to_svg(smiles)
-            
+
             # Clean the response - remove internal fields
             result.pop("_provider", None)
             result.pop("_cache_hit", None)
-            
+
             return result
-        
+
         return {
             "error": f"No compound found for '{name}'",
             "found": False
         }
-        
+
     except Exception as e:
         print(f"❌ Error searching compound: {e}")
         return {
@@ -418,7 +419,7 @@ def cache_stats():
     """Get cache statistics."""
     pubchem_stats = get_cache_stats()
     formula_stats = get_formula_cache_stats()
-    
+
     return {
         "pubchem": pubchem_stats,
         "formula": formula_stats,
@@ -436,6 +437,252 @@ def clear_cache_route():
     clear_cache()
     clear_formula_cache()
     return {"status": "All caches cleared"}
+
+
+# ============================================================
+# NMR PREDICTION ENDPOINT (Using nmrdb.org)
+# ============================================================
+
+@app.get("/api/predict_nmr")
+async def predict_nmr(smiles: str, nucleus: str = "1H"):
+    """
+    Predict NMR spectrum using nmrdb.org's prediction service, with a
+    local RDKit-based fallback if that service is unreachable or its
+    response can't be parsed.
+
+    nmrdb.org exposes a plain (non-JS-rendered) service endpoint at
+    service.php?name=nmr-1h-prediction&smiles=... which is what this
+    calls, rather than scraping the interactive JS predictor page.
+    """
+    print(f"🔬 NMR Prediction: {smiles} ({nucleus})")
+
+    try:
+        if nucleus != "1H":
+            return {
+                "success": False,
+                "error": f"{nucleus} NMR not supported yet. Only 1H is available."
+            }
+
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            return {"success": False, "error": f"Invalid SMILES string: {smiles}"}
+
+        canonical_smiles = Chem.MolToSmiles(mol)
+
+        nmrdb_url = "https://www.nmrdb.org/service.php"
+        params = {"name": "nmr-1h-prediction", "smiles": canonical_smiles}
+        headers = {"User-Agent": "ChemLab-Kenya/1.0"}
+
+        response = None
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(nmrdb_url, params=params, headers=headers)
+        except httpx.RequestError as exc:
+            print(f"⚠️ nmrdb.org request failed: {exc}")
+
+        signals = []
+        source = "fallback"
+
+        if response is not None and response.status_code == 200:
+            signals = parse_nmrdb_service_response(response.text)
+            if signals:
+                source = "nmrdb.org"
+            else:
+                print("⚠️ nmrdb.org returned a response but no signals could be parsed from it")
+
+        if not signals:
+            signals = get_fallback_prediction(smiles, nucleus)
+            source = "fallback"
+
+        return {
+            "success": True,
+            "source": source,
+            "nucleus": nucleus,
+            "signals": signals,
+            "peakCount": len(signals),
+            "smiles": smiles,
+            "error": None
+        }
+
+    except Exception as e:
+        print(f"❌ NMR prediction error: {e}")
+        return {"success": False, "error": str(e)}
+
+
+def parse_nmrdb_service_response(body: str) -> list:
+    """Parse NMR signals out of nmrdb.org's service.php response.
+
+    The service has been reported to return either JSON or a delimited
+    plain-text peak list depending on version, so we try a few shapes
+    rather than assuming one exact format.
+    """
+    signals = []
+    body = body.strip()
+    if not body:
+        return signals
+
+    # Attempt 1: JSON body, various plausible shapes
+    try:
+        data = json.loads(body)
+        candidates = data if isinstance(data, list) else data.get("signals") or data.get("peaks") or []
+        for item in candidates:
+            try:
+                signals.append({
+                    "shift": round(float(item.get("shift") or item.get("delta") or item.get("ppm")), 2),
+                    "integral": int(float(item.get("integral", item.get("nbAtoms", 1)))),
+                    "multiplicity": str(item.get("multiplicity") or item.get("mult") or "m")
+                })
+            except (TypeError, ValueError):
+                continue
+        if signals:
+            return signals
+    except (json.JSONDecodeError, AttributeError):
+        pass
+
+    # Attempt 2: loose "shift ... integral ... multiplicity" pattern, in
+    # case it's an HTML/text fragment rather than clean JSON
+    pattern = r'shift["\s:]*([\d.]+).*?integral["\s:]*([\d.]+).*?multiplicity["\s:]*"?([a-zA-Z]+)"?'
+    matches = re.findall(pattern, body, re.DOTALL | re.IGNORECASE)
+    for match in matches:
+        try:
+            signals.append({
+                "shift": round(float(match[0]), 2),
+                "integral": int(float(match[1])),
+                "multiplicity": match[2]
+            })
+        except (TypeError, ValueError):
+            continue
+    if signals:
+        return signals
+
+    # Attempt 3: simple line-based "ppm,integral,mult" CSV-ish output
+    for line in body.splitlines():
+        parts = [p.strip() for p in re.split(r'[,\t]', line) if p.strip()]
+        if len(parts) >= 2:
+            try:
+                shift = float(parts[0])
+                integral = int(float(parts[1])) if len(parts) > 1 else 1
+                mult = parts[2] if len(parts) > 2 else "m"
+                signals.append({"shift": round(shift, 2), "integral": integral, "multiplicity": mult})
+            except ValueError:
+                continue
+
+    return signals
+
+
+def get_fallback_prediction(smiles: str, nucleus: str = "1H") -> list:
+    """Get a fallback NMR prediction based on molecule structure.
+
+    This is a crude rule-based estimator (aromatic vs. aliphatic vs.
+    heteroatom-adjacent), not a real quantum or empirical NMR model.
+    Good enough for a placeholder, not for anything a student should
+    treat as ground truth.
+    """
+    signals = []
+
+    try:
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            return signals
+
+        mol_with_h = Chem.AddHs(mol)
+
+        for atom in mol_with_h.GetAtoms():
+            if nucleus == "1H" and atom.GetSymbol() == "H":
+                shift = estimate_proton_shift(atom, mol_with_h)
+                if shift > 0:
+                    signals.append({
+                        "shift": round(shift, 2),
+                        "integral": 1,
+                        "multiplicity": "m"
+                    })
+            elif nucleus == "13C" and atom.GetSymbol() == "C":
+                shift = estimate_carbon_shift(atom, mol_with_h)
+                if shift > 0:
+                    signals.append({
+                        "shift": round(shift, 2),
+                        "integral": 1,
+                        "multiplicity": "s"
+                    })
+
+        # Group equivalent protons
+        if nucleus == "1H":
+            signals = group_equivalent_protons(signals)
+
+    except Exception as e:
+        print(f"⚠️ Fallback prediction error: {e}")
+
+    return signals
+
+
+def estimate_proton_shift(atom, mol) -> float:
+    """Estimate 1H chemical shift based on environment.
+
+    `atom` is expected to be a hydrogen; we look at what it's bonded to.
+    """
+    if atom.GetSymbol() != "H":
+        return 0
+
+    heavy_neighbors = [n for n in atom.GetNeighbors()]
+    if not heavy_neighbors:
+        return 0
+
+    parent = heavy_neighbors[0]
+    parent_neighbor_symbols = [n.GetSymbol() for n in parent.GetNeighbors() if n.GetIdx() != atom.GetIdx()]
+
+    if parent.GetSymbol() in ("O", "N"):
+        # Exchangeable proton (OH, NH)
+        return 2.5 + random.uniform(-1.0, 1.5)
+    elif parent.GetIsAromatic():
+        return 7.3 + random.uniform(-0.5, 0.5)
+    elif any(n in ("O", "N", "F", "Cl", "Br", "I") for n in parent_neighbor_symbols):
+        return 3.5 + random.uniform(-0.5, 0.5)
+    elif parent.GetSymbol() == "C":
+        return 1.5 + random.uniform(-0.3, 0.3)
+    else:
+        return 0
+
+
+def estimate_carbon_shift(atom, mol) -> float:
+    """Estimate 13C chemical shift based on environment."""
+    if atom.GetIsAromatic():
+        return 130 + random.uniform(-10, 10)
+
+    # Check if carbonyl
+    for neighbor in atom.GetNeighbors():
+        if neighbor.GetSymbol() == "O":
+            return 170 + random.uniform(-10, 10)
+
+    return 30 + random.uniform(-10, 10)
+
+
+def group_equivalent_protons(signals: list) -> list:
+    """Group equivalent proton signals."""
+    grouped = []
+    used = set()
+
+    for i, sig in enumerate(signals):
+        if i in used:
+            continue
+
+        group = sig.copy()
+        group["integral"] = 1
+        group["count"] = 1
+
+        for j in range(i + 1, len(signals)):
+            if j in used:
+                continue
+            if abs(sig["shift"] - signals[j]["shift"]) < 0.1:
+                used.add(j)
+                group["count"] += 1
+                group["integral"] += signals[j]["integral"]
+                group["shift"] = (group["shift"] + signals[j]["shift"]) / 2
+
+        used.add(i)
+        group["shift"] = round(group["shift"], 2)
+        grouped.append(group)
+
+    return grouped
 
 
 if __name__ == "__main__":
