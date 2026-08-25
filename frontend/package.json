@@ -12,6 +12,7 @@
     "postinstall": "node scripts/copy-ketcher-assets.mjs"
   },
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
     "ketcher-core": "^2.15.0",
     "ketcher-react": "^2.15.0",
     "ketcher-standalone": "^2.15.0",
