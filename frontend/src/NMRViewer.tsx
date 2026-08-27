@@ -17,6 +17,7 @@ interface NMRData {
   signals: NMRSignal[];
   peakCount: number;
   smiles: string;
+  note?: string;
   error?: string;
 }
 
@@ -38,19 +39,10 @@ const NMRViewer: React.FC<{ smiles: string }> = ({ smiles }) => {
       return;
     }
 
-    // 13C isn't supported by the backend yet — show a clear message
-    // instead of firing a request that's guaranteed to fail.
-    if (nucleus === '13C') {
-      setData(null);
-      setError(null);
-      setLoading(false);
-      return;
-    }
-
     const controller = new AbortController();
     let cancelled = false;
 
-    // Debounce so we don't hit the backend (and nmrdb.org behind it)
+    // Debounce so we don't hit the backend (and nmrshiftdb2 behind it)
     // on every keystroke/draw update while someone is editing a structure.
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
@@ -104,6 +96,12 @@ const NMRViewer: React.FC<{ smiles: string }> = ({ smiles }) => {
       'dt': 'Doublet of triplets',
       'td': 'Triplet of doublets',
       'dq': 'Doublet of quartets',
+      // 13C peaks come back as DEPT-style CH-count labels rather than a
+      // coupling pattern (see backend) — pass those through as-is.
+      'CH3': 'CH₃',
+      'CH2': 'CH₂',
+      'CH': 'CH',
+      'C': 'C (no attached H)',
     };
     return labels[mult] || mult;
   };
@@ -148,7 +146,6 @@ const NMRViewer: React.FC<{ smiles: string }> = ({ smiles }) => {
             onClick={() => setNucleus('13C')}
             aria-pressed={nucleus === '13C'}
             disabled={loading}
-            title="13C prediction is coming soon"
             style={{
               padding: '4px 12px',
               background: nucleus === '13C' ? '#00897b' : '#e0e0e0',
@@ -169,12 +166,6 @@ const NMRViewer: React.FC<{ smiles: string }> = ({ smiles }) => {
           )}
         </div>
       </div>
-
-      {nucleus === '13C' && (
-        <div style={{ color: '#666', padding: '15px', textAlign: 'center' }}>
-          ¹³C prediction isn't available yet — switch to ¹H above.
-        </div>
-      )}
 
       {loading && (
         <div style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
@@ -211,13 +202,30 @@ const NMRViewer: React.FC<{ smiles: string }> = ({ smiles }) => {
             </div>
           </div>
 
+          {data.source === 'fallback' && (
+            <div style={{
+              marginTop: '10px',
+              padding: '8px 10px',
+              background: '#fff3e0',
+              borderRadius: '4px',
+              fontSize: '12px',
+              color: '#7a5c00',
+            }}>
+              ⚠️ This is a rough estimate, not a database-backed prediction
+              {data.note ? ` (${data.note})` : ''}. Treat these numbers as
+              approximate.
+            </div>
+          )}
+
           {data.signals && data.signals.length > 0 ? (
             <div style={{ marginTop: '10px', overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                 <thead>
                   <tr style={{ background: '#e0e0e0' }}>
                     <th style={{ padding: '6px', textAlign: 'left' }}>δ (ppm)</th>
-                    <th style={{ padding: '6px', textAlign: 'left' }}>Multiplicity</th>
+                    <th style={{ padding: '6px', textAlign: 'left' }}>
+                      {data.nucleus === '13C' ? 'Carbon Type' : 'Multiplicity'}
+                    </th>
                     <th style={{ padding: '6px', textAlign: 'left' }}>Integral</th>
                   </tr>
                 </thead>
@@ -239,7 +247,9 @@ const NMRViewer: React.FC<{ smiles: string }> = ({ smiles }) => {
           )}
 
           <div style={{ marginTop: '10px', fontSize: '11px', color: '#999' }}>
-            * {data.source === 'nmrdb.org' ? 'Predicted by nmrdb.org SPINUS neural network' : 'Rule-based prediction'}
+            * {data.source === 'nmrshiftdb2'
+              ? 'From nmrshiftdb2 (measured or HOSE-code predicted)'
+              : 'Rough rule-based estimate'}
           </div>
         </>
       )}
