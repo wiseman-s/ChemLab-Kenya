@@ -1,5 +1,7 @@
 import re
 import random
+import urllib.parse
+import xml.etree.ElementTree as ET
 from fractions import Fraction
 from math import gcd
 from functools import reduce
@@ -24,7 +26,7 @@ from chemistry.rdkit_renderer import smiles_to_svg
 app = FastAPI(
     title="ChemLab Kenya API",
     description="Chemistry API for Kenyan Universities",
-    version="1.3.0"
+    version="1.4.0"
 )
 
 # Enable CORS
@@ -252,7 +254,7 @@ def balance_equation_route(equation: str):
 def root():
     return {
         "message": "🧪 ChemLab Kenya API is running!",
-        "version": "1.3.0",
+        "version": "1.4.0",
         "status": "online"
     }
 
@@ -392,31 +394,32 @@ async def compound_by_name(name: str):
 # NMR PREDICTION ENDPOINT
 # ============================================================
 
+# DEPT-style 13C multiplicity letters -> number of attached hydrogens.
+# nmrshiftdb2 reports 13C peak "multiplicity" as CH-count (Q/T/D/S), not
+# a J-coupling pattern like 1H peaks use — these are different things
+# that happen to share letters, so we translate to unambiguous labels.
+DEPT_LABELS = {"q": "CH3", "t": "CH2", "d": "CH", "s": "C"}
+
+
 @app.get("/api/predict_nmr")
 async def predict_nmr(smiles: str, nucleus: str = "1H"):
     """
-    Predict NMR spectrum using nmrdb.org's prediction service, with a
-    local RDKit-based fallback if that service is unreachable or its
-    response can't be parsed.
+    Predict NMR spectrum using nmrshiftdb2's public search/predict service,
+    with a local RDKit-based rule-of-thumb fallback only if that service is
+    unreachable or returns nothing usable.
 
-    Calls nmrdb.org's plain service endpoint (service.php) rather than
-    scraping the interactive JS predictor page, since the predictor
-    page renders its signal data client-side and a raw HTML fetch
-    doesn't contain it.
-
-    Note: this always returns HTTP 200 with "success": true/false in
-    the body (rather than raising), so the frontend can distinguish a
-    real prediction failure from a successful one via the JSON payload
-    — but genuine backend errors are surfaced via "error", not silently
-    swapped for fallback data with "error": None.
+    nmrshiftdb2 first checks for a real experimentally measured spectrum
+    matching the structure, and falls back to its own HOSE-code-based
+    prediction if none exists — either way what comes back is far more
+    reliable than a from-scratch guess.
     """
     print(f"🔬 NMR Prediction: {smiles} ({nucleus})")
 
     try:
-        if nucleus != "1H":
+        if nucleus not in ("1H", "13C"):
             return {
                 "success": False,
-                "error": f"{nucleus} NMR not supported yet. Only 1H is available.",
+                "error": f"{nucleus} NMR isn't supported. Use 1H or 13C.",
                 "source": "fallback"
             }
 
@@ -425,38 +428,42 @@ async def predict_nmr(smiles: str, nucleus: str = "1H"):
             return {"success": False, "error": f"Invalid SMILES string: {smiles}"}
 
         canonical_smiles = Chem.MolToSmiles(mol)
+        encoded_smiles = urllib.parse.quote(canonical_smiles, safe="")
 
-        nmrdb_url = "https://www.nmrdb.org/service.php"
-        params = {"name": "nmr-1h-prediction", "smiles": canonical_smiles}
+        nmrshiftdb_url = (
+            "https://nmrshiftdb.nmr.uni-koeln.de/NmrshiftdbServlet/"
+            f"nmrshiftdbaction/searchorpredict/smiles/{encoded_smiles}/spectrumtype/{nucleus}"
+        )
         headers = {"User-Agent": "ChemLab-Kenya/1.0"}
 
         response = None
         request_error = None
         try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                response = await client.get(nmrdb_url, params=params, headers=headers)
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                response = await client.get(nmrshiftdb_url, headers=headers)
         except httpx.RequestError as exc:
             request_error = str(exc)
-            print(f"⚠️ nmrdb.org request failed: {exc}")
+            print(f"⚠️ nmrshiftdb2 request failed: {exc}")
 
         signals = []
         source = "fallback"
-        parse_note = None
+        note = None
 
         if response is not None and response.status_code == 200:
-            signals = parse_nmrdb_service_response(response.text)
+            signals = parse_nmrshiftdb_response(response.text, nucleus)
             if signals:
-                source = "nmrdb.org"
+                source = "nmrshiftdb2"
             else:
-                parse_note = "nmrdb.org responded but no signals could be parsed from it"
-                print(f"⚠️ {parse_note}")
+                note = "nmrshiftdb2 returned no usable signals for this structure"
+                print(f"⚠️ {note}")
         elif response is not None:
-            parse_note = f"nmrdb.org returned status {response.status_code}"
-            print(f"⚠️ {parse_note}")
+            note = f"nmrshiftdb2 returned status {response.status_code}"
+            print(f"⚠️ {note}")
 
         if not signals:
             signals = get_fallback_nmr_prediction(smiles, nucleus)
             source = "fallback"
+            note = note or request_error
 
         return {
             "success": True,
@@ -465,94 +472,93 @@ async def predict_nmr(smiles: str, nucleus: str = "1H"):
             "signals": signals,
             "peakCount": len(signals),
             "smiles": smiles,
-            # Informational only — still success:true because we did return
-            # usable (fallback) signals. Lets the frontend show a subtle
-            # "estimated, not from nmrdb.org" note without treating it as
-            # a hard failure.
-            "note": request_error or parse_note,
+            # Informational only — set when we fell back to the rough local
+            # estimator, so the frontend/tester can tell real data from a guess.
+            "note": note,
             "error": None
         }
 
     except Exception as e:
         print(f"❌ NMR prediction error: {e}")
-        # A genuine unexpected error — surface it rather than pretending
-        # everything worked.
         return {"success": False, "error": str(e)}
 
 
-def parse_nmrdb_service_response(body: str) -> list:
-    """Parse NMR signals out of nmrdb.org's service.php response.
+def parse_nmrshiftdb_response(xml_text: str, nucleus: str) -> list:
+    """Parse nmrshiftdb2's CML/XML spectrum response into our signal format.
 
-    The service has been reported to return either JSON or a delimited
-    plain-text peak list depending on version, so we try a few shapes
-    rather than assuming one exact format.
+    Response shape (namespaced XML):
+      <moleculeList><cml><spectrum><peakList>
+        <peak xValue="1.2" peakMultiplicity="q" atomRefs="a6 a7 a8" .../>
+        ...
+      </peakList></spectrum>...</cml></moleculeList>
+
+    For 1H peaks, the number of space-separated atomRefs is the integral
+    (how many equivalent protons make up that signal) and peakMultiplicity
+    is a normal J-coupling label (s/d/t/q/m/...).
+
+    For 13C peaks, peakMultiplicity is a DEPT-style CH-count code
+    (Q=CH3, T=CH2, D=CH, S=quaternary C), not a coupling pattern — we
+    translate it to an explicit "CH3"/"CH2"/"CH"/"C" label instead of
+    passing the raw letter through, since it means something different
+    from the 1H case despite sharing letters.
     """
     signals = []
-    body = body.strip()
-    if not body:
-        return signals
 
-    # Attempt 1: JSON body, various plausible shapes
     try:
-        data = json.loads(body)
-        candidates = data if isinstance(data, list) else data.get("signals") or data.get("peaks") or []
-        for item in candidates:
-            try:
-                signals.append({
-                    "shift": round(float(item.get("shift") or item.get("delta") or item.get("ppm")), 2),
-                    "integral": int(float(item.get("integral", item.get("nbAtoms", 1)))),
-                    "multiplicity": str(item.get("multiplicity") or item.get("mult") or "m")
-                })
-            except (TypeError, ValueError):
-                continue
-        if signals:
-            return signals
-    except (json.JSONDecodeError, AttributeError):
-        pass
-
-    # Attempt 2: loose "shift ... integral ... multiplicity" pattern, in
-    # case it's an HTML/text fragment rather than clean JSON
-    pattern = r'shift["\s:]*([\d.]+).*?integral["\s:]*([\d.]+).*?multiplicity["\s:]*"?([a-zA-Z]+)"?'
-    matches = re.findall(pattern, body, re.DOTALL | re.IGNORECASE)
-    for match in matches:
-        try:
-            signals.append({
-                "shift": round(float(match[0]), 2),
-                "integral": int(float(match[1])),
-                "multiplicity": match[2]
-            })
-        except (TypeError, ValueError):
-            continue
-    if signals:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as e:
+        print(f"⚠️ Could not parse nmrshiftdb2 XML: {e}")
         return signals
 
-    # Attempt 3: simple line-based "ppm,integral,mult" CSV-ish output
-    for line in body.splitlines():
-        parts = [p.strip() for p in re.split(r'[,\t]', line) if p.strip()]
-        if len(parts) >= 2:
-            try:
-                shift = float(parts[0])
-                integral = int(float(parts[1])) if len(parts) > 1 else 1
-                mult = parts[2] if len(parts) > 2 else "m"
-                signals.append({"shift": round(shift, 2), "integral": integral, "multiplicity": mult})
-            except ValueError:
-                continue
+    def local_name(tag: str) -> str:
+        return tag.split('}', 1)[-1] if '}' in tag else tag
 
+    for elem in root.iter():
+        if local_name(elem.tag) != "peak":
+            continue
+
+        x_value = elem.get("xValue")
+        if x_value is None:
+            continue
+        try:
+            shift = round(float(x_value), 2)
+        except ValueError:
+            continue
+
+        raw_mult = (elem.get("peakMultiplicity") or "s").strip().lower()
+        atom_refs = elem.get("atomRefs", "")
+        ref_count = len(atom_refs.split()) if atom_refs else 1
+
+        if nucleus == "1H":
+            integral = ref_count if ref_count > 0 else 1
+            multiplicity = raw_mult
+        else:
+            integral = 1
+            multiplicity = DEPT_LABELS.get(raw_mult, raw_mult)
+
+        signals.append({
+            "shift": shift,
+            "integral": integral,
+            "multiplicity": multiplicity
+        })
+
+    # Report peaks high-to-low ppm, the conventional order in NMR write-ups.
+    signals.sort(key=lambda s: s["shift"], reverse=True)
     return signals
 
 
 def get_fallback_nmr_prediction(smiles: str, nucleus: str = "1H") -> list:
-    """Get a fallback NMR prediction based on molecule structure.
+    """Last-resort rule-based estimate, used only when nmrshiftdb2 can't be
+    reached or has nothing for this structure.
 
-    This is a crude rule-based estimator (aromatic vs. aliphatic vs.
-    heteroatom-adjacent), not a real quantum or empirical NMR model.
-    It's a placeholder used only when nmrdb.org can't be reached or
-    parsed — not something to present as an accurate prediction.
+    This is a crude aromatic/aliphatic/heteroatom-adjacent heuristic, not a
+    real prediction model — treat any "source": "fallback" result as a rough
+    placeholder rather than something to rely on.
     """
     try:
         mol = Chem.MolFromSmiles(smiles)
         if mol is None:
-            return get_default_nmr_signals()
+            return get_default_nmr_signals(nucleus)
 
         if nucleus == "1H":
             mol_with_h = Chem.AddHs(mol)
@@ -569,18 +575,16 @@ def get_fallback_nmr_prediction(smiles: str, nucleus: str = "1H") -> list:
                         })
 
             if not signals:
-                return get_default_nmr_signals()
+                return get_default_nmr_signals(nucleus)
 
             return group_equivalent_protons(signals)
 
-        elif nucleus == "13C":
-            return get_default_carbon_signals()
-        else:
-            return get_default_nmr_signals()
+        else:  # 13C
+            return get_default_nmr_signals(nucleus)
 
     except Exception as e:
         print(f"⚠️ Fallback prediction error: {e}")
-        return get_default_nmr_signals()
+        return get_default_nmr_signals(nucleus)
 
 
 def estimate_proton_shift(atom, mol) -> float:
@@ -643,23 +647,20 @@ def group_equivalent_protons(signals: list) -> list:
     return grouped
 
 
-def get_default_nmr_signals() -> list:
-    """Return default 1H NMR signals for molecules the fallback estimator
-    couldn't handle at all (last-resort placeholder, not a real prediction)."""
+def get_default_nmr_signals(nucleus: str = "1H") -> list:
+    """Absolute last-resort placeholder signals, used only when even the
+    local rule-based estimator can't produce anything (e.g. no hydrogens
+    found, or 13C with no better option)."""
+    if nucleus == "13C":
+        return [
+            {"shift": 30.00, "integral": 1, "multiplicity": "CH2"},
+            {"shift": 70.00, "integral": 1, "multiplicity": "CH"},
+            {"shift": 130.00, "integral": 1, "multiplicity": "C"},
+        ]
     return [
         {"shift": 7.20, "integral": 1, "multiplicity": "d"},
         {"shift": 7.40, "integral": 1, "multiplicity": "t"},
         {"shift": 7.60, "integral": 2, "multiplicity": "m"},
-    ]
-
-
-def get_default_carbon_signals() -> list:
-    """Return default 13C NMR signals (placeholder — 13C isn't really
-    supported yet)."""
-    return [
-        {"shift": 30.00, "integral": 1, "multiplicity": "s"},
-        {"shift": 70.00, "integral": 1, "multiplicity": "s"},
-        {"shift": 130.00, "integral": 1, "multiplicity": "s"},
     ]
 
 
