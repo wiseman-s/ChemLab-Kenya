@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: wagate
+    runtime: image
+    repo: https://github.com/wiseman-s/ChemLab-Kenya
+    plan: free
+    region: oregon
+    dockerfilePath: ./wagate/Dockerfile
+    envVars:
+      - key: API_KEY
+        value: chemlab-key-2024
