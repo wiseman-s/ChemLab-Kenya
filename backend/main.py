@@ -23,6 +23,9 @@ from sympy import Matrix, lcm
 from chemistry.pubchem import search_compound_by_name, clear_cache, get_cache_stats
 from chemistry.rdkit_renderer import smiles_to_svg
 
+# Import WhatsApp integration
+from whatsapp import send_whatsapp_message, send_molecule_analysis, send_welcome_message, send_compound_found
+
 app = FastAPI(
     title="ChemLab Kenya API",
     description="Chemistry API for Kenyan Universities",
@@ -472,8 +475,6 @@ async def predict_nmr(smiles: str, nucleus: str = "1H"):
             "signals": signals,
             "peakCount": len(signals),
             "smiles": smiles,
-            # Informational only — set when we fell back to the rough local
-            # estimator, so the frontend/tester can tell real data from a guess.
             "note": note,
             "error": None
         }
@@ -662,6 +663,148 @@ def get_default_nmr_signals(nucleus: str = "1H") -> list:
         {"shift": 7.40, "integral": 1, "multiplicity": "t"},
         {"shift": 7.60, "integral": 2, "multiplicity": "m"},
     ]
+
+
+# ============================================================
+# WHATSAPP INTEGRATION ENDPOINTS
+# ============================================================
+
+@app.post("/api/send_whatsapp")
+async def send_whatsapp(request: dict):
+    """
+    Send a WhatsApp message.
+    Body: { "phone": "254712345678", "message": "Hello" }
+    """
+    phone = request.get("phone")
+    message = request.get("message")
+
+    if not phone or not message:
+        return {"success": False, "error": "Phone and message are required"}
+
+    result = send_whatsapp_message(phone, message)
+    return result
+
+
+@app.post("/api/send_analysis")
+async def send_analysis(request: dict):
+    """
+    Send molecule analysis results via WhatsApp.
+    Body: { "phone": "254712345678", "smiles": "CCO" }
+    """
+    phone = request.get("phone")
+    smiles = request.get("smiles")
+
+    if not phone or not smiles:
+        return {"success": False, "error": "Phone and smiles are required"}
+
+    # Get molecule data
+    result = analyze_molecule(smiles)
+
+    if result.get("error"):
+        return {"success": False, "error": result["error"]}
+
+    wa_result = send_molecule_analysis(phone, result)
+    return wa_result
+
+
+@app.post("/api/whatsapp_webhook")
+async def whatsapp_webhook(request: dict):
+    """
+    Webhook endpoint for receiving WhatsApp messages.
+    Handles incoming messages from students.
+    """
+    print(f"📩 WhatsApp Webhook received: {request}")
+
+    # Get the message details
+    try:
+        message_data = request.get("data", {})
+        phone = message_data.get("phone", "")
+        message = message_data.get("message", "").strip().lower()
+
+        if not phone or not message:
+            return {"status": "ignored", "reason": "No message or phone"}
+
+        # Handle different commands
+        if message == "help":
+            response = """🧪 ChemLab Kenya - Help
+
+Commands:
+• Send a compound name (e.g., "ethanol")
+• Send a SMILES string (e.g., "CCO")
+• Send "help" for this menu
+• Send "about" for info"""
+            send_whatsapp_message(phone, response)
+
+        elif message == "about":
+            response = """🧪 ChemLab Kenya
+
+Free chemistry software for Kenyan students.
+Features:
+• Molecule analysis
+• 3D structure viewer
+• NMR prediction
+• Equation balancing
+• Periodic table
+
+Web: https://chemlab-kenya.vercel.app"""
+            send_whatsapp_message(phone, response)
+
+        elif message.startswith("analyze "):
+            # Extract SMILES or name
+            query = message.replace("analyze ", "").strip()
+            # Try to find compound
+            from chemistry.pubchem import search_compound_by_name
+            import asyncio
+
+            # Search by name
+            result = await search_compound_by_name(query)
+            if result:
+                smiles = result.get("smiles", "")
+                if smiles:
+                    analysis = analyze_molecule(smiles)
+                    if not analysis.get("error"):
+                        send_molecule_analysis(phone, analysis)
+                    else:
+                        send_whatsapp_message(phone, f"❌ Could not analyze: {query}")
+                else:
+                    send_whatsapp_message(phone, f"❌ No SMILES found for: {query}")
+            else:
+                # Try as SMILES
+                mol = Chem.MolFromSmiles(query)
+                if mol:
+                    analysis = analyze_molecule(query)
+                    send_molecule_analysis(phone, analysis)
+                else:
+                    send_whatsapp_message(phone, f"❌ Could not find compound: {query}")
+        else:
+            # Try to find compound by name
+            from chemistry.pubchem import search_compound_by_name
+            import asyncio
+
+            result = await search_compound_by_name(message)
+            if result:
+                smiles = result.get("smiles", "")
+                name = result.get("title", message)
+                send_compound_found(phone, name, smiles)
+            else:
+                # Try as SMILES
+                mol = Chem.MolFromSmiles(message)
+                if mol:
+                    analysis = analyze_molecule(message)
+                    send_molecule_analysis(phone, analysis)
+                else:
+                    response = f"""❌ Could not find compound: "{message}"
+
+Try sending:
+• A compound name (e.g., "ethanol")
+• A SMILES string (e.g., "CCO")
+• "help" for more options"""
+                    send_whatsapp_message(phone, response)
+
+    except Exception as e:
+        print(f"⚠️ Webhook error: {e}")
+
+    return {"status": "received"}
 
 
 # ============================================================
