@@ -6,7 +6,7 @@ from typing import Optional
 # WAGate configuration - Reads from environment variables
 WA_GATEWAY_URL = os.getenv("WA_GATEWAY_URL", "http://localhost:3000")
 WA_API_KEY = os.getenv("WA_API_KEY", "chemlab-key-2024")
-WA_PHONE_NUMBER = os.getenv("WA_PHONE_NUMBER", "")  # +12264079771
+WA_PHONE_NUMBER = os.getenv("WA_PHONE_NUMBER", "")  # Your connected WhatsApp number
 
 # Your virtual Canadian number (for sending)
 YOUR_WA_NUMBER = "+12264079771"
@@ -51,6 +51,26 @@ def send_whatsapp_message(phone: str, message: str) -> dict:
         return {"success": False, "error": "WAGate service not running. Check your WAGate deployment."}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+def format_analysis_message(molecule_data: dict) -> str:
+    """Format molecule analysis results for WhatsApp."""
+    message = f"""🧪 ChemLab Kenya - Molecule Analysis
+
+📊 Formula: {molecule_data.get('formula', 'N/A')}
+⚖️ Molecular Weight: {molecule_data.get('molecular_weight', 'N/A')} g/mol
+🧪 SMILES: {molecule_data.get('smiles', 'N/A')}
+🔬 LogP: {molecule_data.get('logp', 'N/A')}
+💧 TPSA: {molecule_data.get('tpsa', 'N/A')} Å²
+💊 Lipinski Pass: {'✅ Pass' if molecule_data.get('lipinski_pass', False) else '⚠️ Fail'}
+
+💡 View full results: https://chemlab-kenya.vercel.app"""
+    
+    return message
+
+def send_molecule_analysis(phone: str, molecule_data: dict) -> dict:
+    """Send molecule analysis results via WhatsApp."""
+    message = format_analysis_message(molecule_data)
+    return send_whatsapp_message(phone, message)
 
 def send_welcome_message(phone: str) -> dict:
     """Send a welcome message to new users."""
