@@ -129,6 +129,29 @@ function App() {
     }
   };
 
+  // Format phone number: 07... -> 2547...
+  const formatPhoneNumber = (phone: string): string => {
+    // Remove all non-digit characters
+    let cleaned = phone.replace(/\D/g, '');
+    
+    // If starts with 0, replace with 254
+    if (cleaned.startsWith('0')) {
+      cleaned = '254' + cleaned.substring(1);
+    }
+    
+    // If starts with 7, add 254
+    if (cleaned.startsWith('7') && cleaned.length <= 10) {
+      cleaned = '254' + cleaned;
+    }
+    
+    // If starts with 1 (without country code), add 254
+    if (cleaned.startsWith('1') && cleaned.length === 9) {
+      cleaned = '254' + cleaned;
+    }
+    
+    return cleaned;
+  };
+
   // Send molecule analysis to WhatsApp
   const sendToWhatsApp = async () => {
     if (!analysis || analysis.error || !analysis.smiles) {
@@ -136,24 +159,17 @@ function App() {
       return;
     }
 
-    // Clean phone number (remove +, spaces, dashes)
-    const cleanPhone = whatsappPhone.replace(/[\s\-+()]/g, '').trim();
-
-    if (!cleanPhone) {
+    if (!whatsappPhone.trim()) {
       alert('Please enter your phone number first.');
       return;
     }
 
-    if (cleanPhone.length < 9) {
-      alert('Please enter a valid phone number (at least 9 digits).');
+    // Format the phone number
+    const formattedPhone = formatPhoneNumber(whatsappPhone);
+    
+    if (formattedPhone.length < 10) {
+      alert('Please enter a valid phone number (at least 10 digits).');
       return;
-    }
-
-    // Add country code if not present (default to Kenya +254)
-    let finalPhone = cleanPhone;
-    if (cleanPhone.length <= 10 && !cleanPhone.startsWith('254')) {
-      // Assume Kenyan number if no country code
-      finalPhone = '254' + cleanPhone;
     }
 
     try {
@@ -161,7 +177,7 @@ function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          phone: finalPhone,
+          phone: formattedPhone,
           smiles: analysis.smiles
         })
       });
@@ -169,7 +185,8 @@ function App() {
       const data = await response.json();
 
       if (data.success) {
-        alert(`✅ Molecule analysis sent to WhatsApp!\n📱 Phone: +${finalPhone}\nCheck your phone.`);
+        alert(`✅ Molecule analysis sent to WhatsApp!\n📱 Phone: +${formattedPhone}\nCheck your phone.`);
+        setWhatsappPhone(''); // Clear the field after successful send
       } else {
         alert('❌ Failed to send: ' + (data.error || 'Unknown error'));
       }
@@ -620,7 +637,7 @@ function App() {
                       </div>
 
                       {/* =============================================
-                          WHATSAPP BUTTON
+                          WHATSAPP BUTTON WITH PHONE INPUT
                       ============================================== */}
                       <div style={{
                         marginTop: '20px',
