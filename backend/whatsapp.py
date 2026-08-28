@@ -6,10 +6,7 @@ from typing import Optional
 # WAGate configuration - Reads from environment variables
 WA_GATEWAY_URL = os.getenv("WA_GATEWAY_URL", "http://localhost:3000")
 WA_API_KEY = os.getenv("WA_API_KEY", "chemlab-key-2024")
-WA_PHONE_NUMBER = os.getenv("WA_PHONE_NUMBER", "")  # Your connected WhatsApp number
-
-# Your virtual Canadian number (for sending)
-YOUR_WA_NUMBER = "+12264079771"
+WA_PHONE_NUMBER = os.getenv("WA_PHONE_NUMBER", "")
 
 def send_whatsapp_message(phone: str, message: str) -> dict:
     """
@@ -29,11 +26,14 @@ def send_whatsapp_message(phone: str, message: str) -> dict:
         # Use the environment variable for WAGate URL
         wa_gateway = WA_GATEWAY_URL
         
+        # Try multiple header formats that WAGate might accept
         response = requests.post(
             f"{wa_gateway}/api/send",
             headers={
                 "Content-Type": "application/json",
-                "API-Key": WA_API_KEY
+                "X-API-Key": WA_API_KEY,
+                "API-Key": WA_API_KEY,  # Fallback header
+                "Authorization": f"Bearer {WA_API_KEY}"  # Another common format
             },
             json={
                 "phone": clean_phone,
