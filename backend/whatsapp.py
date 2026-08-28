@@ -13,7 +13,7 @@ def send_whatsapp_message(phone: str, message: str) -> dict:
     Send a WhatsApp message via WAGate API.
     
     Args:
-        phone: Recipient phone number in international format (e.g., 254712345678)
+        phone: Recipient phone number in international format (e.g., +12264079771)
         message: Text message to send
     
     Returns:
@@ -23,17 +23,15 @@ def send_whatsapp_message(phone: str, message: str) -> dict:
         # Clean phone number (remove + and spaces)
         clean_phone = phone.replace("+", "").replace(" ", "")
         
-        # Use the environment variable for WAGate URL
+        # Use the correct WAGate endpoint: /chat/send
         wa_gateway = WA_GATEWAY_URL
         
-        # Try multiple header formats that WAGate might accept
+        # The API key should be sent as a header
         response = requests.post(
-            f"{wa_gateway}/api/send",
+            f"{wa_gateway}/chat/send",
             headers={
                 "Content-Type": "application/json",
-                "X-API-Key": WA_API_KEY,
-                "API-Key": WA_API_KEY,  # Fallback header
-                "Authorization": f"Bearer {WA_API_KEY}"  # Another common format
+                "X-API-Key": WA_API_KEY
             },
             json={
                 "phone": clean_phone,
