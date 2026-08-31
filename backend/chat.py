@@ -1,14 +1,16 @@
 # backend/chat.py
 import os
-import json
 import requests
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
-# Hugging Face configuration (FREE!)
-HF_API_KEY = "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"
+# Hugging Face configuration
+# Set this in your environment — never hardcode it in source
+HF_API_KEY = os.getenv("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")
 HF_MODEL = os.getenv("HF_MODEL", "google/gemma-2-2b-it")
 
-# System prompt
+# New router endpoint (api-inference.huggingface.co was shut down)
+API_URL = "https://router.huggingface.co/v1/chat/completions"
+
 SYSTEM_PROMPT = """You are ChemLab Bot – a friendly chemistry assistant for students in Kenya.
 
 Your goals:
@@ -32,104 +34,91 @@ Keep answers concise but thorough. Use simple English.
 
 conversations: Dict[str, List[Dict[str, str]]] = {}
 
+
 def get_conversation(session_id: str) -> List[Dict[str, str]]:
     if session_id not in conversations:
         conversations[session_id] = []
     return conversations[session_id]
+
 
 def chat_with_deepseek(
     message: str,
     session_id: str = "default",
     history_limit: int = 10
 ) -> Dict[str, Any]:
+    if not HF_API_KEY:
+        return {
+            "success": False,
+            "error": "HF_API_KEY environment variable is not set.",
+            "conversation_id": session_id
+        }
+
     try:
         history = get_conversation(session_id)
-        
-        # Build the prompt
-        messages = []
-        for msg in history[-history_limit:]:
-            messages.append(msg)
+
+        # Build proper chat-format messages (system + history + new message)
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        messages.extend(history[-history_limit:])
         messages.append({"role": "user", "content": message})
-        
-        # Use the chat completion endpoint (more reliable)
-        API_URL = f"https://api-inference.huggingface.co/models/{HF_MODEL}"
-        
-        # Format messages for the API
-        prompt = ""
-        for msg in messages:
-            prompt += f"{msg['role']}: {msg['content']}\n"
-        prompt += "assistant:"
-        
+
         headers = {
             "Authorization": f"Bearer {HF_API_KEY}",
             "Content-Type": "application/json"
         }
-        
+
         payload = {
-            "inputs": prompt,
-            "parameters": {
-                "max_new_tokens": 256,
-                "temperature": 0.7,
-                "do_sample": True,
-                "return_full_text": False
-            }
+            "model": HF_MODEL,
+            "messages": messages,
+            "max_tokens": 256,
+            "temperature": 0.7,
         }
-        
-        # Try with a timeout and retry logic
-        try:
-            response = requests.post(
-                API_URL,
-                headers=headers,
-                json=payload,
-                timeout=20
-            )
-        except requests.exceptions.ConnectionError:
-            # Try using the replica endpoint
-            API_URL_REPLICA = f"https://api-inference.huggingface.co/models/{HF_MODEL}/replica"
-            response = requests.post(
-                API_URL_REPLICA,
-                headers=headers,
-                json=payload,
-                timeout=20
-            )
-        
+
+        response = requests.post(API_URL, headers=headers, json=payload, timeout=30)
+
         if response.status_code == 503:
             return {
                 "success": False,
-                "error": "The AI model is loading. Please wait 10 seconds and try again.",
+                "error": "The AI model is loading. Please wait a few seconds and try again.",
                 "conversation_id": session_id
             }
-        
+
         if response.status_code != 200:
             return {
                 "success": False,
-                "error": f"Hugging Face API error: {response.status_code} - {response.text[:100]}",
+                "error": f"Hugging Face API error: {response.status_code} - {response.text[:200]}",
                 "conversation_id": session_id
             }
-        
+
         data = response.json()
-        
-        if isinstance(data, list) and len(data) > 0:
-            assistant_message = data[0].get("generated_text", "").strip()
-        else:
-            assistant_message = data.get("generated_text", "").strip()
-        
+        assistant_message = (
+            data.get("choices", [{}])[0]
+            .get("message", {})
+            .get("content", "")
+            .strip()
+        )
+
         if not assistant_message:
             assistant_message = "I couldn't generate a response. Please try again."
-        
+
         history.append({"role": "user", "content": message})
         history.append({"role": "assistant", "content": assistant_message})
-        
+
         if len(history) > 50:
             conversations[session_id] = history[-50:]
-        
+
         return {
             "success": True,
             "response": assistant_message,
             "conversation_id": session_id,
             "provider": "huggingface"
         }
-        
+
+    except requests.exceptions.ConnectionError as e:
+        return {
+            "success": False,
+            "error": f"Network error connecting to Hugging Face: {str(e)}",
+            "conversation_id": session_id
+        }
     except Exception as e:
         return {
             "success": False,
@@ -137,11 +126,13 @@ def chat_with_deepseek(
             "conversation_id": session_id
         }
 
+
 def clear_conversation(session_id: str) -> Dict[str, Any]:
     if session_id in conversations:
         conversations[session_id] = []
         return {"success": True, "message": "Conversation cleared"}
     return {"success": False, "error": "Session not found"}
+
 
 def get_conversation_summary(session_id: str) -> Dict[str, Any]:
     if session_id in conversations:
