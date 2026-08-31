@@ -7,7 +7,7 @@ import ChemCalculators from './ChemCalculators';
 import PhysicsCalculators from './PhysicsCalculators';
 import PeriodicTableExplorer from './PeriodicTableExplorer';
 import CompoundExplorer from './components/CompoundExplorer';
-import ChatBot from './ChatBot';
+import ChatBot from './ChatBot';  // ✅ Correct import path
 import './App.css';
 
 // Import the API URL from config
