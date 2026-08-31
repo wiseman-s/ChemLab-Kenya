@@ -5,7 +5,7 @@ from typing import List, Dict, Any, Optional
 from openai import OpenAI
 
 # DeepSeek configuration
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
+DEEPSEEK_API_KEY = os.getenv("sk-a803b0c5bb6c433482cf2ed75f8621c3", "")
 DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 
 # Initialize DeepSeek client
