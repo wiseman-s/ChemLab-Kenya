@@ -7,6 +7,7 @@ import ChemCalculators from './ChemCalculators';
 import PhysicsCalculators from './PhysicsCalculators';
 import PeriodicTableExplorer from './PeriodicTableExplorer';
 import CompoundExplorer from './components/CompoundExplorer';
+import ChatBot from './ChatBot';
 import './App.css';
 
 // Import the API URL from config
@@ -94,9 +95,6 @@ function App() {
   const [smilesInput, setSmilesInput] =
     useState('CCO');
 
-  // Phone number for WhatsApp
-  const [whatsappPhone, setWhatsappPhone] = useState('');
-
   const analyzeMolecule = async (smiles: string) => {
     if (!smiles) {
       alert('Please enter a SMILES string or draw a molecule');
@@ -126,72 +124,6 @@ function App() {
       } as MoleculeData);
     } finally {
       setLoading(false);
-    }
-  };
-
-  // Format phone number: 07... -> 2547...
-  const formatPhoneNumber = (phone: string): string => {
-    // Remove all non-digit characters
-    let cleaned = phone.replace(/\D/g, '');
-    
-    // If starts with 0, replace with 254
-    if (cleaned.startsWith('0')) {
-      cleaned = '254' + cleaned.substring(1);
-    }
-    
-    // If starts with 7, add 254
-    if (cleaned.startsWith('7') && cleaned.length <= 10) {
-      cleaned = '254' + cleaned;
-    }
-    
-    // If starts with 1 (without country code), add 254
-    if (cleaned.startsWith('1') && cleaned.length === 9) {
-      cleaned = '254' + cleaned;
-    }
-    
-    return cleaned;
-  };
-
-  // Send molecule analysis to WhatsApp
-  const sendToWhatsApp = async () => {
-    if (!analysis || analysis.error || !analysis.smiles) {
-      alert('Please analyze a molecule first.');
-      return;
-    }
-
-    if (!whatsappPhone.trim()) {
-      alert('Please enter your phone number first.');
-      return;
-    }
-
-    // Format the phone number
-    const formattedPhone = formatPhoneNumber(whatsappPhone);
-    
-    if (formattedPhone.length < 10) {
-      alert('Please enter a valid phone number (at least 10 digits).');
-      return;
-    }
-
-    try {
-      const response = await fetch(`${API_URL}/api/send_analysis`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phone: formattedPhone,
-          smiles: analysis.smiles
-        })
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        alert(`✅ Molecule analysis sent to WhatsApp!\n📱 Phone: +${formattedPhone}\nCheck your phone.`);
-        setWhatsappPhone(''); // Clear the field after successful send
-      } else {
-        alert('❌ Failed to send: ' + (data.error || 'Unknown error'));
-      }
-    } catch (error) {
-      alert('❌ Error sending to WhatsApp: ' + (error as Error).message);
     }
   };
 
@@ -636,67 +568,6 @@ function App() {
 
                       </div>
 
-                      {/* =============================================
-                          WHATSAPP BUTTON WITH PHONE INPUT
-                      ============================================== */}
-                      <div style={{
-                        marginTop: '20px',
-                        padding: '15px',
-                        background: '#f0fdf4',
-                        borderRadius: '8px',
-                        border: '1px solid #bbf7d0'
-                      }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                          <label style={{ fontWeight: 'bold', fontSize: '14px', color: '#166534' }}>
-                            📱 Enter phone number to receive results:
-                          </label>
-                          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                            <input
-                              type="tel"
-                              value={whatsappPhone}
-                              onChange={(e) => setWhatsappPhone(e.target.value)}
-                              placeholder="e.g., 0712345678 or +254712345678"
-                              style={{
-                                flex: 1,
-                                minWidth: '180px',
-                                padding: '10px 14px',
-                                border: '2px solid #22c55e',
-                                borderRadius: '6px',
-                                fontSize: '15px',
-                                outline: 'none',
-                                background: 'white'
-                              }}
-                            />
-                            <button
-                              onClick={sendToWhatsApp}
-                              style={{
-                                padding: '10px 25px',
-                                background: '#25D366',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '6px',
-                                fontSize: '15px',
-                                fontWeight: 'bold',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px',
-                                boxShadow: '0 2px 8px rgba(37, 211, 102, 0.3)',
-                                transition: 'transform 0.2s',
-                                whiteSpace: 'nowrap'
-                              }}
-                              onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
-                              onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                            >
-                              <span>📱</span> Send to WhatsApp
-                            </button>
-                          </div>
-                          <div style={{ fontSize: '12px', color: '#666' }}>
-                            💡 Enter your phone number (e.g., 0712345678 or +254712345678)
-                          </div>
-                        </div>
-                      </div>
-
                     </div>
                   )
 
@@ -829,6 +700,10 @@ function App() {
         </div>
 
       </main>
+
+      {/* ChatBot - Floating button in bottom-right corner */}
+      <ChatBot />
+
     </div>
   );
 }
