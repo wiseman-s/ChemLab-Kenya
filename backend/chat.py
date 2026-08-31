@@ -5,7 +5,7 @@ from typing import List, Dict, Any
 
 # Hugging Face configuration
 # Set this in your environment — never hardcode it in source
-HF_API_KEY = os.getenv("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")
+HF_API_KEY = os.getenv("HF_API_KEY")
 HF_MODEL = os.getenv("HF_MODEL", "google/gemma-2-2b-it")
 
 # New router endpoint (api-inference.huggingface.co was shut down)
