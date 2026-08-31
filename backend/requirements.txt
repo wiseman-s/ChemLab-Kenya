@@ -9,3 +9,4 @@ requests
 certifi
 beautifulsoup4
 html5lib
+openai
