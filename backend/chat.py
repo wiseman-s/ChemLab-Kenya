@@ -1,45 +1,12 @@
 # backend/chat.py
 import os
 import json
+import requests
 from typing import List, Dict, Any, Optional
-from openai import OpenAI
 
-# DeepSeek configuration
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
-
-# OpenRouter configuration (fallback)
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "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")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2-flash-lite-preview-02-05")
-
-# Try DeepSeek first, then OpenRouter as fallback
-client = None
-provider = None
-
-if DEEPSEEK_API_KEY:
-    try:
-        client = OpenAI(
-            api_key=DEEPSEEK_API_KEY,
-            base_url="https://api.deepseek.com/v1"
-        )
-        provider = "deepseek"
-        print("✅ DeepSeek client initialized successfully")
-    except Exception as e:
-        print(f"⚠️ DeepSeek initialization failed: {e}")
-
-if client is None and OPENROUTER_API_KEY:
-    try:
-        client = OpenAI(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=OPENROUTER_API_KEY,
-        )
-        provider = "openrouter"
-        print("✅ OpenRouter client initialized successfully")
-    except Exception as e:
-        print(f"⚠️ OpenRouter initialization failed: {e}")
-
-if client is None:
-    print("⚠️ No API client configured! Set DEEPSEEK_API_KEY or OPENROUTER_API_KEY.")
+# Hugging Face configuration (FREE!)
+HF_API_KEY = "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"
+HF_MODEL = os.getenv("HF_MODEL", "google/gemma-2-2b-it")  # Free, fast model
 
 # System prompt - teaches the AI about ChemLab Kenya
 SYSTEM_PROMPT = """You are ChemLab Bot – a friendly chemistry assistant for students in Kenya.
@@ -78,56 +45,63 @@ def chat_with_deepseek(
     history_limit: int = 10
 ) -> Dict[str, Any]:
     """
-    Send a message to AI (DeepSeek or OpenRouter fallback) and get a response.
+    Send a message to Hugging Face's free inference API.
     """
-    if client is None:
-        return {
-            "success": False,
-            "error": "No AI service configured. Please set DEEPSEEK_API_KEY or OPENROUTER_API_KEY.",
-            "conversation_id": session_id
-        }
-    
     try:
         # Get conversation history
         history = get_conversation(session_id)
         
-        # Build messages array
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT}
-        ]
-        
-        # Add conversation history (limited to history_limit)
+        # Build the prompt with history
+        prompt = SYSTEM_PROMPT + "\n\n"
         for msg in history[-history_limit:]:
-            messages.append(msg)
+            prompt += f"{msg['role']}: {msg['content']}\n"
+        prompt += f"user: {message}\nassistant:"
         
-        # Add the new user message
-        messages.append({"role": "user", "content": message})
+        # Call Hugging Face API
+        API_URL = f"https://api-inference.huggingface.co/models/{HF_MODEL}"
+        headers = {"Authorization": f"Bearer {HF_API_KEY}"}
         
-        # Call the API with appropriate model
-        if provider == "deepseek":
-            response = client.chat.completions.create(
-                model=DEEPSEEK_MODEL,
-                messages=messages,
-                temperature=0.7,
-                max_tokens=2048,
-                stream=False
-            )
-        else:
-            # OpenRouter
-            response = client.chat.completions.create(
-                model=OPENROUTER_MODEL,
-                messages=messages,
-                temperature=0.7,
-                max_tokens=2048,
-                stream=False,
-                extra_headers={
-                    "HTTP-Referer": "https://chemlab-kenya.vercel.app",
-                    "X-Title": "ChemLab Kenya"
+        response = requests.post(
+            API_URL,
+            headers=headers,
+            json={
+                "inputs": prompt,
+                "parameters": {
+                    "max_new_tokens": 512,
+                    "temperature": 0.7,
+                    "do_sample": True
                 }
-            )
+            },
+            timeout=30
+        )
+        
+        if response.status_code == 503:
+            # Model is loading - wait and retry
+            return {
+                "success": False,
+                "error": "The AI model is loading. Please wait 10 seconds and try again.",
+                "conversation_id": session_id
+            }
+        
+        if response.status_code != 200:
+            return {
+                "success": False,
+                "error": f"Hugging Face API error: {response.status_code}",
+                "conversation_id": session_id
+            }
+        
+        data = response.json()
         
         # Extract the response
-        assistant_message = response.choices[0].message.content
+        if isinstance(data, list) and len(data) > 0:
+            assistant_message = data[0].get("generated_text", "")
+            # Remove the prompt from the response
+            assistant_message = assistant_message.replace(prompt, "").strip()
+        else:
+            assistant_message = data.get("generated_text", "").replace(prompt, "").strip()
+        
+        if not assistant_message:
+            assistant_message = "I couldn't generate a response. Please try again."
         
         # Store in conversation history
         history.append({"role": "user", "content": message})
@@ -141,27 +115,19 @@ def chat_with_deepseek(
             "success": True,
             "response": assistant_message,
             "conversation_id": session_id,
-            "provider": provider,
-            "usage": {
-                "prompt_tokens": response.usage.prompt_tokens,
-                "completion_tokens": response.usage.completion_tokens,
-                "total_tokens": response.usage.total_tokens
-            }
+            "provider": "huggingface"
         }
         
-    except Exception as e:
-        error_msg = str(e)
-        # Check if it's a balance error
-        if "402" in error_msg or "Insufficient Balance" in error_msg:
-            return {
-                "success": False,
-                "error": "AI service credits have run out. Please try again later.",
-                "conversation_id": session_id,
-                "balance_error": True
-            }
+    except requests.exceptions.Timeout:
         return {
             "success": False,
-            "error": error_msg,
+            "error": "The AI service is taking too long. Please try again.",
+            "conversation_id": session_id
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
             "conversation_id": session_id
         }
 
