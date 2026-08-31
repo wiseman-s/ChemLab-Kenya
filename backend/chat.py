@@ -2,17 +2,29 @@
 import os
 import json
 from typing import List, Dict, Any, Optional
-from openai import OpenAI
 
-# DeepSeek configuration
-DEEPSEEK_API_KEY = os.getenv("sk-a803b0c5bb6c433482cf2ed75f8621c3", "")
+# DeepSeek configuration - Read from environment variable
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 
-# Initialize DeepSeek client
-client = OpenAI(
-    api_key=DEEPSEEK_API_KEY,
-    base_url="https://api.deepseek.com/v1"
-)
+# Initialize DeepSeek client (only if API key is set)
+if DEEPSEEK_API_KEY:
+    try:
+        from openai import OpenAI
+        client = OpenAI(
+            api_key=DEEPSEEK_API_KEY,
+            base_url="https://api.deepseek.com/v1"
+        )
+        print("✅ DeepSeek client initialized successfully")
+    except ImportError:
+        client = None
+        print("⚠️ OpenAI package not installed. Run: pip install openai")
+    except Exception as e:
+        client = None
+        print(f"⚠️ Failed to initialize DeepSeek client: {e}")
+else:
+    client = None
+    print("⚠️ DEEPSEEK_API_KEY environment variable not set!")
 
 # System prompt - teaches the AI about ChemLab Kenya
 SYSTEM_PROMPT = """You are ChemLab Bot – a friendly chemistry assistant for students in Kenya.
@@ -62,6 +74,14 @@ def chat_with_deepseek(
     Returns:
         dict: Contains response and conversation history
     """
+    # Check if client is available
+    if client is None:
+        return {
+            "success": False,
+            "error": "DeepSeek API key not configured. Please set DEEPSEEK_API_KEY environment variable.",
+            "conversation_id": session_id
+        }
+    
     try:
         # Get conversation history
         history = get_conversation(session_id)
