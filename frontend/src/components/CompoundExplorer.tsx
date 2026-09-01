@@ -14,18 +14,18 @@ async function searchCompoundBackend(name: string) {
   const response = await fetch(
     `${API_BASE}/compound/name?name=${encodeURIComponent(name)}`
   );
-  
+
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Search failed' }));
     throw new Error(error.error || error.detail || 'Search failed');
   }
-  
+
   const data = await response.json();
-  
+
   if (data.error) {
     throw new Error(data.error);
   }
-  
+
   return data;
 }
 
@@ -35,6 +35,14 @@ const CompoundExplorer: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [composition, setComposition] = useState<ElementComposition[] | null>(null);
+
+  // Custom toast notification (replaces browser alert())
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (message: string) => {
+    setToastMessage(message);
+    window.setTimeout(() => setToastMessage(null), 3000);
+  };
 
   const handleSearch = async () => {
     const query = searchTerm.trim();
@@ -81,20 +89,31 @@ const CompoundExplorer: React.FC = () => {
 
   // Copy SMILES to clipboard
   const copySmiles = () => {
-    if (compound && compound.smiles) {
-      navigator.clipboard.writeText(compound.smiles).then(() => {
-        alert('✅ SMILES copied to clipboard!\n\nYou can now paste it into the Molecular Analyzer.');
-      }).catch(() => {
-        // Fallback for older browsers
-        const textArea = document.createElement('textarea');
-        textArea.value = compound.smiles;
-        document.body.appendChild(textArea);
-        textArea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textArea);
-        alert('✅ SMILES copied to clipboard!\n\nYou can now paste it into the Molecular Analyzer.');
-      });
+    if (!compound || !compound.smiles) {
+      return;
     }
+
+    const onCopied = () => {
+      showToast('✅ SMILES copied! You can now paste it into the Molecular Analyzer.');
+    };
+
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(compound.smiles).then(onCopied).catch(() => {
+        fallbackCopy(compound.smiles, onCopied);
+      });
+    } else {
+      fallbackCopy(compound.smiles, onCopied);
+    }
+  };
+
+  const fallbackCopy = (text: string, onCopied: () => void) => {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    document.body.appendChild(textArea);
+    textArea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textArea);
+    onCopied();
   };
 
   return (
@@ -105,6 +124,7 @@ const CompoundExplorer: React.FC = () => {
         borderRadius: '8px',
         border: '1px solid #e0e0e0',
         marginTop: '20px',
+        position: 'relative',
       }}
     >
       <h2 style={{ color: '#00695c', marginBottom: '8px' }}>
@@ -304,6 +324,32 @@ const CompoundExplorer: React.FC = () => {
               </p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Custom toast notification — replaces the native alert() popup */}
+      {toastMessage && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: '#00695c',
+            color: 'white',
+            padding: '12px 20px',
+            borderRadius: '6px',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
+            fontSize: '14px',
+            fontWeight: 500,
+            zIndex: 1000,
+            maxWidth: '90vw',
+            textAlign: 'center',
+          }}
+          role="status"
+          aria-live="polite"
+        >
+          {toastMessage}
         </div>
       )}
     </div>
