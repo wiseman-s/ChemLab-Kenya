@@ -1,5 +1,6 @@
 // frontend/src/ChatBot.tsx
 import React, { useState, useEffect, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { API_URL } from './config';
 
 interface Message {
@@ -95,7 +96,7 @@ const ChatBot: React.FC = () => {
     } catch (error) {
       console.error('Failed to clear chat:', error);
     }
-    
+
     setMessages([
       {
         role: 'assistant',
@@ -216,7 +217,29 @@ const ChatBot: React.FC = () => {
                     boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
                   }}
                 >
-                  {msg.content}
+                  {msg.role === 'assistant' ? (
+                    <div className="chatbot-markdown">
+                      <ReactMarkdown
+                        components={{
+                          // Keep headers visually small so they don't look
+                          // out of place inside a compact chat bubble
+                          h1: ({ node, ...props }) => <p style={{ fontWeight: 700, fontSize: '15px', margin: '4px 0' }} {...props} />,
+                          h2: ({ node, ...props }) => <p style={{ fontWeight: 700, fontSize: '14px', margin: '4px 0' }} {...props} />,
+                          h3: ({ node, ...props }) => <p style={{ fontWeight: 700, fontSize: '14px', margin: '4px 0' }} {...props} />,
+                          p: ({ node, ...props }) => <p style={{ margin: '0 0 8px 0' }} {...props} />,
+                          ul: ({ node, ...props }) => <ul style={{ margin: '4px 0', paddingLeft: '18px' }} {...props} />,
+                          ol: ({ node, ...props }) => <ol style={{ margin: '4px 0', paddingLeft: '18px' }} {...props} />,
+                          li: ({ node, ...props }) => <li style={{ marginBottom: '2px' }} {...props} />,
+                          strong: ({ node, ...props }) => <strong style={{ fontWeight: 700 }} {...props} />,
+                          hr: () => null, // suppress the "---" dividers entirely inside a small bubble
+                        }}
+                      >
+                        {msg.content}
+                      </ReactMarkdown>
+                    </div>
+                  ) : (
+                    msg.content
+                  )}
                   <div
                     style={{
                       fontSize: '9px',
