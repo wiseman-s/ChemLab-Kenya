@@ -18,6 +18,11 @@ export default defineConfig({
   build: {
     commonjsOptions: {
       include: [/ketcher/, /node_modules/]
-    }
+    },
+    // Cosmetic only — raises the "chunk is large" warning threshold so
+    // Ketcher's inherently big chunk doesn't spam build output. Doesn't
+    // change what loads or when; the real fix for that is the dynamic
+    // import()s inside KetcherEditor.tsx.
+    chunkSizeWarningLimit: 1000
   }
 })
