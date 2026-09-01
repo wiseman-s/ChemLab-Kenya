@@ -4,13 +4,16 @@ import json
 import requests
 from typing import List, Dict, Any
 
-# Hugging Face configuration
-# Set this in your environment — never hardcode it in source
-HF_API_KEY = os.getenv("HF_API_KEY")
-HF_MODEL = os.getenv("HF_MODEL", "google/gemma-2-2b-it")
+# OpenRouter configuration
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
-# New router endpoint (api-inference.huggingface.co was shut down)
-API_URL = "https://router.huggingface.co/v1/chat/completions"
+# "openrouter/free" is OpenRouter's own auto-router that picks a free model.
+# For more predictable behavior, you can pin a specific free model instead, e.g.:
+# OPENROUTER_MODEL = "meta-llama/llama-3.1-8b-instruct:free"
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/free")
+
+# Correct chat completions endpoint (the bare domain is not a valid API URL)
+API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 SYSTEM_PROMPT = """You are ChemLab Bot – a friendly chemistry assistant for students in Kenya.
 
@@ -42,33 +45,35 @@ def get_conversation(session_id: str) -> List[Dict[str, str]]:
     return conversations[session_id]
 
 
+# Keep this name matching what main.py imports: chat_with_deepseek
 def chat_with_deepseek(
     message: str,
     session_id: str = "default",
     history_limit: int = 10
 ) -> Dict[str, Any]:
-    if not HF_API_KEY:
+    if not OPENROUTER_API_KEY:
         return {
             "success": False,
-            "error": "HF_API_KEY environment variable is not set.",
+            "error": "OPENROUTER_API_KEY environment variable is not set.",
             "conversation_id": session_id
         }
 
     try:
         history = get_conversation(session_id)
 
-        # Build proper chat-format messages (system + history + new message)
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         messages.extend(history[-history_limit:])
         messages.append({"role": "user", "content": message})
 
         headers = {
-            "Authorization": f"Bearer {HF_API_KEY}",
-            "Content-Type": "application/json"
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://chemlab-kenya.onrender.com",
+            "X-Title": "ChemLab Kenya"
         }
 
         payload = {
-            "model": HF_MODEL,
+            "model": OPENROUTER_MODEL,
             "messages": messages,
             "max_tokens": 512,
             "temperature": 0.7,
@@ -76,22 +81,15 @@ def chat_with_deepseek(
 
         response = requests.post(API_URL, headers=headers, json=payload, timeout=30)
 
-        if response.status_code == 503:
-            return {
-                "success": False,
-                "error": "The AI model is loading. Please wait a few seconds and try again.",
-                "conversation_id": session_id
-            }
-
         if response.status_code != 200:
             return {
                 "success": False,
-                "error": f"Hugging Face API error: {response.status_code} - {response.text[:200]}",
+                "error": f"OpenRouter API error: {response.status_code} - {response.text[:200]}",
                 "conversation_id": session_id
             }
 
         data = response.json()
-        print(f"🔎 HF raw response: {json.dumps(data)[:1500]}")
+        print(f"🔎 OpenRouter raw response: {json.dumps(data)[:1500]}", flush=True)
 
         assistant_message = (
             data.get("choices", [{}])[0]
@@ -113,13 +111,13 @@ def chat_with_deepseek(
             "success": True,
             "response": assistant_message,
             "conversation_id": session_id,
-            "provider": "huggingface"
+            "provider": "openrouter"
         }
 
     except requests.exceptions.ConnectionError as e:
         return {
             "success": False,
-            "error": f"Network error connecting to Hugging Face: {str(e)}",
+            "error": f"Network error connecting to OpenRouter: {str(e)}",
             "conversation_id": session_id
         }
     except Exception as e:
