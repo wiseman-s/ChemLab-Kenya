@@ -1,6 +1,4 @@
-import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { Editor } from 'ketcher-react';
-import { StandaloneStructServiceProvider } from 'ketcher-standalone';
+import React, { useRef, useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import 'ketcher-react/dist/index.css';
 
 declare global {
@@ -9,8 +7,20 @@ declare global {
   }
 }
 
-// Created once at module load, not per-render
-const structServiceProvider = new StandaloneStructServiceProvider();
+// Both of these are dynamically imported at runtime instead of statically
+// at the top of the file. A static `import ... from 'ketcher-standalone'`
+// here would run the moment KetcherEditor.tsx itself loads — and since
+// App.tsx imports KetcherEditor statically too, that would drag the WASM
+// engine into the initial bundle regardless of the lazy() below. Wrapping
+// the UI component in lazy() alone doesn't help if its dependency is still
+// imported eagerly one line above it.
+const Editor = lazy(() =>
+  import('ketcher-react').then((module) => ({ default: module.Editor }))
+);
+
+const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+  navigator.userAgent
+);
 
 type TabKey = 'draw' | 'smiles';
 
@@ -27,7 +37,8 @@ const exampleBtnStyle: React.CSSProperties = {
   background: '#e0e0e0',
   border: 'none',
   borderRadius: '4px',
-  cursor: 'pointer'
+  cursor: 'pointer',
+  touchAction: 'manipulation'
 };
 
 const tabStyle = (active: boolean): React.CSSProperties => ({
@@ -38,7 +49,8 @@ const tabStyle = (active: boolean): React.CSSProperties => ({
   color: active ? '#00897b' : '#666',
   fontWeight: active ? 600 : 400,
   cursor: 'pointer',
-  fontSize: '15px'
+  fontSize: '15px',
+  touchAction: 'manipulation'
 });
 
 const EXAMPLES: { label: string; smiles: string }[] = [
@@ -58,15 +70,43 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
   const [error, setError] = useState<string | null>(null);
   const [initTimedOut, setInitTimedOut] = useState(false);
   const [editorKey, setEditorKey] = useState(0); // bump to force a full remount of <Editor>
-  const [activeTab, setActiveTab] = useState<TabKey>('draw');
+  const [activeTab, setActiveTab] = useState<TabKey>('draw'); // unchanged default
+  const [drawTabActivated, setDrawTabActivated] = useState(false); // gates the actual lazy load
   const [smilesText, setSmilesText] = useState('CCO');
   const [pendingSmiles, setPendingSmiles] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [structProvider, setStructProvider] = useState<any>(null);
+  const [structProviderError, setStructProviderError] = useState<string | null>(null);
 
-  // Give the WASM engine a bounded amount of time to report ready; if it
-  // never does (blocked asset, slow network, silent failure), surface a
-  // retry option instead of leaving the user on a spinner forever.
+  // Loads ketcher-standalone (the WASM structure service) only once the
+  // Draw tab is activated — this is the other half of the lazy-load fix,
+  // alongside the lazy() import of the Editor component above. Without
+  // this, ketcher-standalone would still load eagerly with the rest of
+  // the app even though the Editor UI itself was deferred.
   useEffect(() => {
+    if (!drawTabActivated || structProvider) return;
+
+    let cancelled = false;
+    import('ketcher-standalone')
+      .then(({ StandaloneStructServiceProvider }) => {
+        if (!cancelled) setStructProvider(new StandaloneStructServiceProvider());
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setStructProviderError('Could not load the chemistry engine: ' + (err as Error).message);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [drawTabActivated, structProvider]);
+
+  // Only start the "is it stuck?" timer once loading has actually begun
+  // (i.e. after the user has triggered the lazy load), not on mount.
+  useEffect(() => {
+    if (!drawTabActivated) return;
+
     setInitTimedOut(false);
     if (initTimeoutRef.current) clearTimeout(initTimeoutRef.current);
 
@@ -77,7 +117,7 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
     return () => {
       if (initTimeoutRef.current) clearTimeout(initTimeoutRef.current);
     };
-  }, [editorKey, ready]);
+  }, [drawTabActivated, editorKey, ready]);
 
   const handleInit = (ketcher: any) => {
     ketcherRef.current = ketcher;
@@ -87,11 +127,22 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
     setError(null);
   };
 
+  // Triggers the actual lazy load. Called by the Draw tab button, the
+  // "Tap to Load Editor" placeholder, or automatically by file upload
+  // (since uploading a structure implies wanting to see it on canvas).
+  const activateDrawTab = useCallback(() => {
+    setDrawTabActivated(true);
+    setActiveTab('draw');
+    setError(null);
+  }, []);
+
   const reloadEditor = useCallback(() => {
     ketcherRef.current = null;
     setReady(false);
     setInitTimedOut(false);
     setError(null);
+    setStructProvider(null);
+    setStructProviderError(null);
     setEditorKey((k) => k + 1); // remount <Editor> from scratch
   }, []);
 
@@ -122,10 +173,8 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
   // example clicks, and file uploads — one retry-safe path for all three.
   //
   // After a successful load we re-derive the canonical SMILES from Ketcher
-  // itself (rather than trusting whatever text we fed in) and emit that.
-  // This is what lets uploaded .mol/.sdf files feed the rest of the app
-  // (analysis panel etc.) the same way typed SMILES does, without needing
-  // to track "was this already a SMILES string" separately.
+  // itself and emit that, so uploaded .mol/.sdf files feed the rest of the
+  // app (analysis panel etc.) the same way typed SMILES does.
   useEffect(() => {
     if (!ready || !ketcherRef.current || !pendingSmiles) {
       return;
@@ -143,9 +192,6 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
             emitSmiles(canonicalSmiles);
           }
         } catch (smilesErr) {
-          // The structure loaded fine but SMILES extraction failed — rare,
-          // but don't block the user over it; they can still hit
-          // "Get SMILES & Analyze" manually.
           console.warn('Loaded structure but could not derive SMILES:', smilesErr);
         }
       } catch (err) {
@@ -153,9 +199,8 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
         setError(
           'Could not display this structure — check that it\'s valid, then try again.'
         );
-        // Clear pendingSmiles even on failure. Leaving it set would mean
-        // resubmitting the exact same text does nothing, since React sees
-        // no state change and this effect never re-fires.
+        // Clear pendingSmiles even on failure, so retrying with the exact
+        // same text isn't a no-op (React sees no state change otherwise).
         setPendingSmiles(null);
       }
     };
@@ -189,9 +234,8 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
       return;
     }
     try {
-      // Prefer the public setMolecule API over reaching into internal
-      // properties like `.editor.clear()`, which isn't part of Ketcher's
-      // documented interface and can break across library versions.
+      // Public setMolecule API, not the undocumented `.editor.clear()`
+      // internal property, which can break across Ketcher versions.
       await ketcherRef.current.setMolecule('');
       setError(null);
     } catch (err) {
@@ -204,8 +248,6 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    // Reset the input immediately so selecting the same file again still
-    // fires onChange (browsers otherwise dedupe identical selections).
     if (fileInputRef.current) fileInputRef.current.value = '';
     if (!file) return;
 
@@ -228,6 +270,10 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
       return;
     }
 
+    // Uploading implies the user wants to see it on the canvas — trigger
+    // the lazy load now so the editor is warming up while we read the file.
+    activateDrawTab();
+
     setUploading(true);
     const reader = new FileReader();
 
@@ -239,14 +285,10 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
         return;
       }
 
-      // .smi/.txt are treated as plain SMILES (first non-empty line, in
-      // case of trailing name/ID columns some tools append).
-      // .mol/.sdf content is passed through as-is — Ketcher's setMolecule
-      // auto-detects molfile/SDF format.
       let structureText = content;
       if (extension === '.smi' || extension === '.txt') {
         const firstLine = content.split(/\r?\n/).find((line) => line.trim().length > 0) || '';
-        structureText = firstLine.split(/\s+/)[0]; // drop any trailing name/ID after whitespace
+        structureText = firstLine.split(/\s+/)[0];
       }
 
       if (!structureText) {
@@ -254,11 +296,6 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
         return;
       }
 
-      // Feed it into the same pendingSmiles pipeline used everywhere else.
-      // Once loaded, the canonical SMILES is re-derived from Ketcher and
-      // emitted automatically (see the loadPendingMolecule effect) —
-      // works the same whether this came from a .smi/.txt SMILES line or
-      // a full .mol/.sdf structure.
       setPendingSmiles(structureText);
     };
 
@@ -286,7 +323,7 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
             padding: '10px',
             border: '2px solid #00897b',
             borderRadius: '4px',
-            fontSize: '15px'
+            fontSize: isMobileDevice ? '16px' : '15px', // 16px avoids iOS auto-zoom-on-focus
           }}
         />
         <button
@@ -299,7 +336,8 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
             borderRadius: '4px',
             cursor: 'pointer',
             fontSize: '15px',
-            whiteSpace: 'nowrap'
+            whiteSpace: 'nowrap',
+            touchAction: 'manipulation'
           }}
         >
           🔬 Load
@@ -314,7 +352,8 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
             borderRadius: '4px',
             cursor: uploading ? 'default' : 'pointer',
             fontSize: '15px',
-            whiteSpace: 'nowrap'
+            whiteSpace: 'nowrap',
+            touchAction: 'manipulation'
           }}
         >
           {uploading ? '⏳ Reading...' : '📁 Upload File'}
@@ -336,8 +375,7 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
         <button
           style={tabStyle(activeTab === 'draw')}
           onClick={() => {
-            setActiveTab('draw');
-
+            activateDrawTab();
             if (smilesText.trim()) {
               setPendingSmiles(smilesText.trim());
             }
@@ -350,26 +388,134 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
         </button>
       </div>
 
-      {/* Draw tab — canvas stays mounted always so Ketcher's WASM engine
-          doesn't reinitialize every time you switch tabs; we just hide it. */}
+      {/* Draw tab */}
       <div style={{ display: activeTab === 'draw' ? 'block' : 'none' }}>
-        <div style={{ border: '1px solid #ccc', borderRadius: '8px', overflow: 'hidden', height, position: 'relative' }}>
-          <Editor
-            key={editorKey}
-            staticResourcesUrl="/ketcher"
-            structServiceProvider={structServiceProvider}
-            onInit={handleInit}
-            errorHandler={(msg: string) => setError(msg)}
-          />
-        </div>
-
-        {!ready && !initTimedOut && (
-          <div style={{ padding: '8px 0', fontSize: '0.9rem', color: '#666' }}>
-            ⏳ Loading editor engine (first load can take a few seconds)...
+        {!drawTabActivated ? (
+          // Nothing has loaded yet — no network request has fired for the
+          // Ketcher bundle. This is what actually fixes the slow-load
+          // complaint: the heavy engine only starts downloading here.
+          <div
+            style={{
+              height,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: '#fafafa',
+              border: '1px solid #ddd',
+              borderRadius: '8px',
+              color: '#666',
+              textAlign: 'center',
+              padding: '20px'
+            }}
+          >
+            <div style={{ fontSize: '40px', marginBottom: '10px' }}>✏️</div>
+            <div style={{ fontWeight: 'bold', color: '#00695c' }}>Tap to Load Molecular Editor</div>
+            <div style={{ fontSize: '13px', marginTop: '5px' }}>
+              Loads the drawing tools. Takes a few seconds on first load.
+            </div>
+            <button
+              onClick={activateDrawTab}
+              style={{
+                marginTop: '15px',
+                padding: '10px 30px',
+                background: '#00897b',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '16px',
+                cursor: 'pointer',
+                touchAction: 'manipulation'
+              }}
+            >
+              Load Editor
+            </button>
+          </div>
+        ) : structProviderError ? (
+          <div style={{
+            height,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: '#fff3e0',
+            border: '1px solid #ffcc80',
+            borderRadius: '8px',
+            color: '#7a5c00',
+            textAlign: 'center',
+            padding: '20px'
+          }}>
+            <div style={{ fontSize: '32px', marginBottom: '10px' }}>⚠️</div>
+            <div>{structProviderError}</div>
+            <button
+              onClick={reloadEditor}
+              style={{
+                marginTop: '15px',
+                padding: '8px 20px',
+                background: '#00897b',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                touchAction: 'manipulation'
+              }}
+            >
+              🔄 Retry
+            </button>
+          </div>
+        ) : !structProvider ? (
+          // ketcher-standalone (the WASM structure service) is still being
+          // fetched — the Editor UI component isn't even requested yet.
+          <div style={{
+            height,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: '#fafafa',
+            border: '1px solid #ddd',
+            borderRadius: '8px',
+            color: '#666'
+          }}>
+            <div style={{ fontSize: '24px', marginBottom: '10px' }}>🧪</div>
+            <div>⏳ Starting chemistry engine...</div>
+          </div>
+        ) : (
+          <div style={{ border: '1px solid #ccc', borderRadius: '8px', overflow: 'hidden', height, position: 'relative' }}>
+            <Suspense
+              fallback={
+                <div style={{
+                  height: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: '#fafafa',
+                  color: '#666'
+                }}>
+                  <div style={{ fontSize: '24px', marginBottom: '10px' }}>🧪</div>
+                  <div>⏳ Loading molecular editor...</div>
+                </div>
+              }
+            >
+              <Editor
+                key={editorKey}
+                staticResourcesUrl="/ketcher"
+                structServiceProvider={structProvider}
+                onInit={handleInit}
+                errorHandler={(msg: string) => setError(msg)}
+              />
+            </Suspense>
           </div>
         )}
 
-        {!ready && initTimedOut && (
+        {drawTabActivated && structProvider && !ready && !initTimedOut && (
+          <div style={{ padding: '8px 0', fontSize: '0.9rem', color: '#666' }}>
+            ⏳ Initializing editor (first load can take a few seconds)...
+          </div>
+        )}
+
+        {drawTabActivated && !ready && initTimedOut && (
           <div style={{
             marginTop: '10px',
             padding: '10px',
@@ -383,7 +529,7 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
             flexWrap: 'wrap',
             gap: '10px'
           }}>
-            <span>⚠️ The editor is taking longer than expected to load. It may be a slow connection, or it failed to start.</span>
+            <span>⚠️ The editor is taking longer than expected. It may be a slow connection, or it failed to start.</span>
             <button
               onClick={reloadEditor}
               style={{
@@ -393,7 +539,8 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
                 border: 'none',
                 borderRadius: '4px',
                 cursor: 'pointer',
-                whiteSpace: 'nowrap'
+                whiteSpace: 'nowrap',
+                touchAction: 'manipulation'
               }}
             >
               🔄 Retry
@@ -401,53 +548,58 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
           </div>
         )}
 
-        <div style={{ marginTop: '10px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <button
-            onClick={getSmilesFromCanvas}
-            disabled={!ready}
-            style={{
-              padding: '8px 20px',
-              background: ready ? '#00897b' : '#ccc',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: ready ? 'pointer' : 'not-allowed'
-            }}
-          >
-            🔬 Get SMILES & Analyze
-          </button>
-          <button
-            onClick={clearCanvas}
-            disabled={!ready}
-            style={{
-              padding: '8px 20px',
-              background: '#e0e0e0',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: ready ? 'pointer' : 'not-allowed'
-            }}
-          >
-            🗑️ Clear
-          </button>
-          <button
-            onClick={reloadEditor}
-            title="If the canvas is acting up, this reloads the editor engine from scratch"
-            style={{
-              padding: '8px 20px',
-              background: 'transparent',
-              border: '1px solid #ccc',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              color: '#666',
-              fontSize: '0.85rem'
-            }}
-          >
-            🔄 Reload Editor
-          </button>
-        </div>
+        {drawTabActivated && (
+          <div style={{ marginTop: '10px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <button
+              onClick={getSmilesFromCanvas}
+              disabled={!ready}
+              style={{
+                padding: '8px 20px',
+                background: ready ? '#00897b' : '#ccc',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: ready ? 'pointer' : 'not-allowed',
+                touchAction: 'manipulation'
+              }}
+            >
+              🔬 Get SMILES & Analyze
+            </button>
+            <button
+              onClick={clearCanvas}
+              disabled={!ready}
+              style={{
+                padding: '8px 20px',
+                background: '#e0e0e0',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: ready ? 'pointer' : 'not-allowed',
+                touchAction: 'manipulation'
+              }}
+            >
+              🗑️ Clear
+            </button>
+            <button
+              onClick={reloadEditor}
+              title="If the canvas is acting up, this reloads the editor engine from scratch"
+              style={{
+                padding: '8px 20px',
+                background: 'transparent',
+                border: '1px solid #ccc',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                color: '#666',
+                fontSize: '0.85rem',
+                touchAction: 'manipulation'
+              }}
+            >
+              🔄 Reload Editor
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* SMILES tab — a browsable reference, since quick pasting now lives in the bar above */}
+      {/* SMILES/Library tab — no dependency on Ketcher at all, always fast */}
       {activeTab === 'smiles' && (
         <div style={{ padding: '10px 0' }}>
           <p style={{ color: '#666', fontSize: '0.9rem', marginBottom: '10px' }}>
@@ -463,11 +615,12 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
                   background: '#f5f5f5',
                   borderRadius: '4px',
                   cursor: 'pointer',
-                  border: '1px solid #e0e0e0'
+                  border: '1px solid #e0e0e0',
+                  touchAction: 'manipulation'
                 }}
               >
                 <strong>{ex.label}</strong>
-                <div style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: '#666', marginTop: '4px' }}>
+                <div style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: '#666', marginTop: '4px', wordBreak: 'break-all' }}>
                   {ex.smiles}
                 </div>
               </div>
@@ -489,7 +642,9 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
         </div>
       )}
 
-      {/* Quick examples — shared by both tabs */}
+      {/* Quick examples — shared by both tabs. Clicking one queues the
+          structure but doesn't force-load Ketcher; it'll apply once the
+          Draw tab is actually opened. */}
       <div style={{ marginTop: '15px' }}>
         <strong>Quick Examples:</strong>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '8px' }}>
