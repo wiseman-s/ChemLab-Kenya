@@ -87,10 +87,17 @@ def chat_with_deepseek(
 
         response = requests.post(API_URL, headers=headers, json=payload, timeout=30)
 
+        # Transient/provider-side issues (rate limits, no available endpoint, etc.)
+        # get one silent retry before we give up and show a friendly message.
+        if response.status_code in (404, 429, 500, 502, 503):
+            print(f"⚠️ OpenRouter transient error {response.status_code}, retrying once: {response.text[:200]}", flush=True)
+            response = requests.post(API_URL, headers=headers, json=payload, timeout=30)
+
         if response.status_code != 200:
+            print(f"❌ OpenRouter API error {response.status_code}: {response.text[:300]}", flush=True)
             return {
                 "success": False,
-                "error": f"OpenRouter API error: {response.status_code} - {response.text[:200]}",
+                "error": "I'm having trouble connecting right now. Please try again in a moment! 🧪",
                 "conversation_id": session_id
             }
 
@@ -121,15 +128,17 @@ def chat_with_deepseek(
         }
 
     except requests.exceptions.ConnectionError as e:
+        print(f"❌ Network error: {e}", flush=True)
         return {
             "success": False,
-            "error": f"Network error connecting to OpenRouter: {str(e)}",
+            "error": "I'm having trouble connecting right now. Please try again in a moment! 🧪",
             "conversation_id": session_id
         }
     except Exception as e:
+        print(f"❌ Unexpected error: {e}", flush=True)
         return {
             "success": False,
-            "error": f"Error: {str(e)}",
+            "error": "Something went wrong on my end. Please try again! 🧪",
             "conversation_id": session_id
         }
 
