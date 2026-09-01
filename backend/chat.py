@@ -1,5 +1,6 @@
 # backend/chat.py
 import os
+import json
 import requests
 from typing import List, Dict, Any
 
@@ -69,7 +70,7 @@ def chat_with_deepseek(
         payload = {
             "model": HF_MODEL,
             "messages": messages,
-            "max_tokens": 256,
+            "max_tokens": 512,
             "temperature": 0.7,
         }
 
@@ -90,6 +91,8 @@ def chat_with_deepseek(
             }
 
         data = response.json()
+        print(f"🔎 HF raw response: {json.dumps(data)[:1500]}")
+
         assistant_message = (
             data.get("choices", [{}])[0]
             .get("message", {})
