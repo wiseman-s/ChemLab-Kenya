@@ -20,6 +20,7 @@ const ChatBot: React.FC = () => {
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [cooldown, setCooldown] = useState(false);
   const [sessionId] = useState(() => Math.random().toString(36).substring(7));
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -29,7 +30,7 @@ const ChatBot: React.FC = () => {
   }, [messages]);
 
   const sendMessage = async () => {
-    if (!input.trim() || loading) return;
+    if (!input.trim() || loading || cooldown) return;
 
     const userMessage: Message = {
       role: 'user',
@@ -77,6 +78,8 @@ const ChatBot: React.FC = () => {
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setLoading(false);
+      setCooldown(true);
+      setTimeout(() => setCooldown(false), 1500);
     }
   };
 
@@ -295,7 +298,7 @@ const ChatBot: React.FC = () => {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Ask a chemistry question..."
-              disabled={loading}
+              disabled={loading || cooldown}
               style={{
                 flex: 1,
                 padding: '10px 14px',
@@ -308,14 +311,14 @@ const ChatBot: React.FC = () => {
             />
             <button
               onClick={sendMessage}
-              disabled={loading || !input.trim()}
+              disabled={loading || cooldown || !input.trim()}
               style={{
                 padding: '10px 20px',
-                background: loading || !input.trim() ? '#ccc' : '#00897b',
+                background: loading || cooldown || !input.trim() ? '#ccc' : '#00897b',
                 color: 'white',
                 border: 'none',
                 borderRadius: '24px',
-                cursor: loading || !input.trim() ? 'not-allowed' : 'pointer',
+                cursor: loading || cooldown || !input.trim() ? 'not-allowed' : 'pointer',
                 fontSize: '14px',
                 fontWeight: 'bold'
               }}
