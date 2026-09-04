@@ -34,7 +34,7 @@ const Mol3DViewer: React.FC<Mol3DViewerProps> = ({
   // Load 3Dmol from CDN
   useEffect(() => {
     if (window.$3Dmol) {
-      console.log('✅ 3Dmol already loaded');
+      console.log('3Dmol already loaded');
       setScriptLoaded(true);
       return;
     }
@@ -49,16 +49,16 @@ const Mol3DViewer: React.FC<Mol3DViewerProps> = ({
       return () => clearInterval(checkInterval);
     }
 
-    console.log('📥 Loading 3Dmol from CDN...');
+    console.log('Loading 3Dmol from CDN...');
     const script = document.createElement('script');
     script.src = 'https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.0.0/3Dmol-min.js';
     script.async = true;
     script.onload = () => {
-      console.log('✅ 3Dmol loaded from CDN');
+      console.log('3Dmol loaded from CDN');
       setScriptLoaded(true);
     };
     script.onerror = () => {
-      console.error('❌ Failed to load 3Dmol from CDN');
+      console.error('Failed to load 3Dmol from CDN');
       setError('Failed to load 3Dmol library from CDN');
     };
     document.head.appendChild(script);
@@ -73,57 +73,57 @@ const Mol3DViewer: React.FC<Mol3DViewerProps> = ({
 
   // Load molecule when SMILES changes and script is loaded
   useEffect(() => {
-    console.log('🔍 useEffect triggered - scriptLoaded:', scriptLoaded, 'smiles:', smiles);
+    console.log('useEffect triggered - scriptLoaded:', scriptLoaded, 'smiles:', smiles);
     
     if (!scriptLoaded) {
-      console.log('⏳ Waiting for 3Dmol script to load...');
+      console.log('Waiting for 3Dmol script to load...');
       return;
     }
     
     if (!smiles) {
-      console.log('⏳ No SMILES provided');
+      console.log('No SMILES provided');
       return;
     }
     
     if (!containerRef.current) {
-      console.log('⏳ Container not ready');
+      console.log('Container not ready');
       return;
     }
     
     if (!window.$3Dmol) {
-      console.error('❌ 3Dmol library not available');
+      console.error('3Dmol library not available');
       setError('3Dmol library not available');
       return;
     }
 
     const loadMolecule = async () => {
-      console.log('🔄 Loading molecule:', smiles);
+      console.log('Loading molecule:', smiles);
       setLoading(true);
       setError(null);
       
       try {
-        // ✅ FIXED: Use API_URL from config
+        // Use API_URL from config
         const url = `${API_URL}/generate_3d?smiles=${encodeURIComponent(smiles)}`;
-        console.log('📡 Fetching:', url);
+        console.log('Fetching:', url);
         
         const response = await fetch(url);
         const data = await response.json();
-        console.log('📦 Data received:', data);
+        console.log('Data received:', data);
         
         if (data.error) {
           throw new Error(data.error);
         }
         
         const $3Dmol = window.$3Dmol;
-        console.log('🔧 3Dmol library available');
+        console.log('3Dmol library available');
         
         // Clear container
         while (containerRef.current?.firstChild) {
           containerRef.current.removeChild(containerRef.current.firstChild);
         }
-        console.log('🧹 Container cleared');
+        console.log('Container cleared');
         
-        console.log('🎨 Creating viewer...');
+        console.log('Creating viewer...');
         const viewer = $3Dmol.createViewer(containerRef.current, {
           backgroundColor: 'white',
           defaultcolors: true,
@@ -131,36 +131,36 @@ const Mol3DViewer: React.FC<Mol3DViewerProps> = ({
           antialias: !isMobile(),
           quality: isMobile() ? 'low' : 'high',
         });
-        console.log('✅ Viewer created');
+        console.log('Viewer created');
         
-        console.log('📊 Adding model...');
+        console.log('Adding model...');
         viewer.addModel(data.molblock, 'mol');
-        console.log('✅ Model added');
+        console.log('Model added');
         
-        console.log('🎨 Setting style...');
+        console.log('Setting style...');
         viewer.setStyle({}, {
           stick: { radius: 0.15 },
           sphere: { radius: 0.35 }
         });
-        console.log('✅ Style set');
+        console.log('Style set');
         
-        console.log('🔍 Zooming...');
+        console.log('Zooming...');
         viewer.zoomTo();
-        console.log('✅ Zoomed');
+        console.log('Zoomed');
         
-        console.log('🔄 Rendering...');
+        console.log('Rendering...');
         viewer.render();
-        console.log('✅ Rendered');
+        console.log('Rendered');
         
-        console.log('🔄 Spinning...');
+        console.log('Spinning...');
         viewer.spin(true);
-        console.log('✅ Spinning');
+        console.log('Spinning');
         
         viewerRef.current = viewer;
         setLoading(false);
-        console.log('🎉 3D structure loaded successfully!');
+        console.log('3D structure loaded successfully!');
       } catch (err) {
-        console.error('❌ 3D load error:', err);
+        console.error('3D load error:', err);
         setError('Failed to load 3D structure: ' + (err as Error).message);
         setLoading(false);
       }
@@ -212,13 +212,13 @@ const Mol3DViewer: React.FC<Mol3DViewerProps> = ({
       
       {loading && (
         <div style={{ textAlign: 'center', padding: '10px', color: '#666' }}>
-          ⏳ Loading 3D structure...
+          Loading 3D structure...
         </div>
       )}
       
       {error && (
         <div style={{ color: '#d32f2f', padding: '10px' }}>
-          ❌ {error}
+          Error: {error}
         </div>
       )}
 
@@ -237,7 +237,7 @@ const Mol3DViewer: React.FC<Mol3DViewerProps> = ({
           pointerEvents: 'none',
           zIndex: 5,
         }}>
-          👆 Drag to rotate • Pinch to zoom
+          Drag to rotate • Pinch to zoom
         </div>
       )}
       
@@ -253,7 +253,7 @@ const Mol3DViewer: React.FC<Mol3DViewerProps> = ({
             cursor: 'pointer'
           }}
         >
-          🔄 Toggle Spin
+          Toggle Spin
         </button>
         <button
           onClick={resetView}
@@ -266,12 +266,12 @@ const Mol3DViewer: React.FC<Mol3DViewerProps> = ({
             cursor: 'pointer'
           }}
         >
-          🔍 Reset View
+          Reset View
         </button>
       </div>
       
       <div style={{ marginTop: '5px', fontSize: '0.8rem', color: '#666' }}>
-        💡 Drag to rotate • Scroll to zoom
+        Drag to rotate • Scroll to zoom
       </div>
     </div>
   );
