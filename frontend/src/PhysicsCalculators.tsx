@@ -62,9 +62,9 @@ const PhysicsCalculators: React.FC = () => {
   return (
     <div>
       <div style={{ display: 'flex', borderBottom: '1px solid #ddd', marginBottom: '15px', flexWrap: 'wrap' }}>
-        <button style={tabStyle(activeTab === 'motion')} onClick={() => setActiveTab('motion')}>🏃 Motion</button>
-        <button style={tabStyle(activeTab === 'forces')} onClick={() => setActiveTab('forces')}>💪 Forces</button>
-        <button style={tabStyle(activeTab === 'energy')} onClick={() => setActiveTab('energy')}>⚡ Energy</button>
+        <button style={tabStyle(activeTab === 'motion')} onClick={() => setActiveTab('motion')}>Motion</button>
+        <button style={tabStyle(activeTab === 'forces')} onClick={() => setActiveTab('forces')}>Forces</button>
+        <button style={tabStyle(activeTab === 'energy')} onClick={() => setActiveTab('energy')}>Energy</button>
       </div>
 
       {activeTab === 'motion' && <MotionCalc />}
@@ -111,10 +111,10 @@ const MotionCalc: React.FC = () => {
         <div style={fieldWrapStyle}><label>a — acceleration (m/s²)</label><input style={inputStyle} value={a} onChange={e => setA(e.target.value)} type="number" /></div>
         <div style={fieldWrapStyle}><label>t — time (s)</label><input style={inputStyle} value={t} onChange={e => setT(e.target.value)} type="number" /></div>
       </div>
-      {error ? <div style={errorBoxStyle}>❌ {error}</div> : result && <div style={resultBoxStyle}>{result}</div>}
+      {error ? <div style={errorBoxStyle}>Error: {error}</div> : result && <div style={resultBoxStyle}>{result}</div>}
 
       <p style={{ color: '#999', fontSize: '0.8rem', marginTop: '15px' }}>
-        💡 For displacement, use s = ut + ½at² once you have all of u, a, t.
+        For displacement, use s = ut + ½at² once you have all of u, a, t.
       </p>
     </div>
   );
@@ -174,7 +174,7 @@ const ForcesCalc: React.FC = () => {
             <div style={fieldWrapStyle}><label>a — acceleration (m/s²)</label><input style={inputStyle} value={a} onChange={e => setA(e.target.value)} type="number" placeholder="leave blank" /></div>
             <div style={fieldWrapStyle}><label>F — force (N)</label><input style={inputStyle} value={f} onChange={e => setF(e.target.value)} type="number" /></div>
           </div>
-          {error ? <div style={errorBoxStyle}>❌ {error}</div> : result && <div style={resultBoxStyle}>{result}</div>}
+          {error ? <div style={errorBoxStyle}>Error: {error}</div> : result && <div style={resultBoxStyle}>{result}</div>}
         </div>
       )}
 
