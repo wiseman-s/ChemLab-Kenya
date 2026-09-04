@@ -66,7 +66,7 @@ const PeriodicTableExplorer: React.FC = () => {
       }}
     >
       <h2 style={{ color: '#00695c', marginBottom: '20px' }}>
-        🔬 Periodic Table Explorer
+        Periodic Table Explorer
       </h2>
 
       {/* Search and Filter */}
@@ -82,7 +82,7 @@ const PeriodicTableExplorer: React.FC = () => {
           type="text"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="🔍 Search by name, symbol, or atomic number..."
+          placeholder="Search by name, symbol, or atomic number..."
           style={{
             flex: 1,
             padding: '10px',
