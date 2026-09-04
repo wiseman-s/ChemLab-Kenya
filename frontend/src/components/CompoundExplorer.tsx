@@ -7,7 +7,7 @@ import {
 } from '../utils/formulaComposition';
 import { API_URL } from '../config';
 
-// ✅ Backend API URL - using config
+// Backend API URL - using config
 const API_BASE = `${API_URL}/api`;
 
 async function searchCompoundBackend(name: string) {
@@ -36,7 +36,7 @@ const CompoundExplorer: React.FC = () => {
   const [error, setError] = useState('');
   const [composition, setComposition] = useState<ElementComposition[] | null>(null);
 
-  // Custom toast notification (replaces browser alert())
+  // Custom toast notification (replaces browser alert)
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (message: string) => {
@@ -94,7 +94,7 @@ const CompoundExplorer: React.FC = () => {
     }
 
     const onCopied = () => {
-      showToast('✅ SMILES copied! You can now paste it into the Molecular Analyzer.');
+      showToast('SMILES copied! You can now paste it into the Molecular Analyzer.');
     };
 
     if (navigator.clipboard) {
@@ -128,7 +128,7 @@ const CompoundExplorer: React.FC = () => {
       }}
     >
       <h2 style={{ color: '#00695c', marginBottom: '8px' }}>
-        🧪 Compound Explorer
+        Compound Explorer
       </h2>
 
       <p style={{ color: '#666', marginTop: 0, marginBottom: '20px' }}>
@@ -240,7 +240,7 @@ const CompoundExplorer: React.FC = () => {
                     fontWeight: 'bold'
                   }}
                 >
-                  📋 Copy SMILES
+                  Copy SMILES
                 </button>
               </div>
               <div
@@ -258,7 +258,7 @@ const CompoundExplorer: React.FC = () => {
                 {compound.smiles}
               </div>
               <div style={{ marginTop: '5px', fontSize: '12px', color: '#666' }}>
-                💡 Copy this SMILES and paste it into the <strong>Molecular Analyzer</strong> tab to view the 2D and 3D structure.
+                Copy this SMILES and paste it into the <strong>Molecular Analyzer</strong> tab to view the 2D and 3D structure.
               </div>
             </div>
           </div>
@@ -281,7 +281,7 @@ const CompoundExplorer: React.FC = () => {
                   fontSize: '17px',
                 }}
               >
-                ⚛️ Element Composition
+                Element Composition
               </strong>
 
               <div style={{ display: 'grid', gap: '8px' }}>
@@ -327,7 +327,7 @@ const CompoundExplorer: React.FC = () => {
         </div>
       )}
 
-      {/* Custom toast notification — replaces the native alert() popup */}
+      {/* Custom toast notification — replaces the native alert popup */}
       {toastMessage && (
         <div
           style={{
