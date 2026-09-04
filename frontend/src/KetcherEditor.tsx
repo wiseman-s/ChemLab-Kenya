@@ -40,11 +40,11 @@ const exampleBtnStyle: React.CSSProperties = {
 };
 
 const EXAMPLES: { label: string; smiles: string }[] = [
-  { label: '🍷 Ethanol', smiles: 'CCO' },
-  { label: '🍋 Acetic Acid', smiles: 'CC(=O)O' },
-  { label: '💊 Aspirin', smiles: 'CC(=O)OC1=CC=CC=C1C(=O)O' },
-  { label: '🔄 Benzene', smiles: 'c1ccccc1' },
-  { label: '🍋 Valeric Acid', smiles: 'CC(C)CC(=O)O' },
+  { label: 'Ethanol', smiles: 'CCO' },
+  { label: 'Acetic Acid', smiles: 'CC(=O)O' },
+  { label: 'Aspirin', smiles: 'CC(=O)OC1=CC=CC=C1C(=O)O' },
+  { label: 'Benzene', smiles: 'c1ccccc1' },
+  { label: 'Valeric Acid', smiles: 'CC(C)CC(=O)O' },
 ];
 
 const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
@@ -321,7 +321,7 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
             touchAction: 'manipulation'
           }}
         >
-          🔬 Load
+          Load
         </button>
         <button
           onClick={() => fileInputRef.current?.click()}
@@ -337,7 +337,7 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
             touchAction: 'manipulation'
           }}
         >
-          {uploading ? '⏳ Reading...' : '📁 Upload File'}
+          {uploading ? 'Reading...' : 'Upload File'}
         </button>
         <input
           ref={fileInputRef}
@@ -434,7 +434,7 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
               touchAction: 'manipulation'
             }}
           >
-            🔄 Retry
+            Retry
           </button>
         </div>
       ) : !structProvider ? (
@@ -450,7 +450,7 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
           color: '#666'
         }}>
           <div style={{ fontSize: '24px', marginBottom: '10px' }}>🧪</div>
-          <div>⏳ Starting chemistry engine...</div>
+          <div>Starting chemistry engine...</div>
         </div>
       ) : (
         <div style={{ border: '1px solid #ccc', borderRadius: '8px', overflow: 'hidden', height, position: 'relative' }}>
@@ -466,7 +466,7 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
                 color: '#666'
               }}>
                 <div style={{ fontSize: '24px', marginBottom: '10px' }}>🧪</div>
-                <div>⏳ Loading molecular editor...</div>
+                <div>Loading molecular editor...</div>
               </div>
             }
           >
@@ -483,7 +483,7 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
 
       {activated && structProvider && !ready && !initTimedOut && (
         <div style={{ padding: '8px 0', fontSize: '0.9rem', color: '#666' }}>
-          ⏳ Initializing editor (first load can take a few seconds)...
+          Initializing editor (first load can take a few seconds)...
         </div>
       )}
 
@@ -501,7 +501,7 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
           flexWrap: 'wrap',
           gap: '10px'
         }}>
-          <span>⚠️ The editor is taking longer than expected. It may be a slow connection, or it failed to start.</span>
+          <span>The editor is taking longer than expected. It may be a slow connection, or it failed to start.</span>
           <button
             onClick={reloadEditor}
             style={{
@@ -515,7 +515,7 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
               touchAction: 'manipulation'
             }}
           >
-            🔄 Retry
+            Retry
           </button>
         </div>
       )}
@@ -535,7 +535,7 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
               touchAction: 'manipulation'
             }}
           >
-            🔬 Get SMILES & Analyze
+            Get SMILES & Analyze
           </button>
           <button
             onClick={clearCanvas}
@@ -549,7 +549,7 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
               touchAction: 'manipulation'
             }}
           >
-            🗑️ Clear
+            Clear
           </button>
           <button
             onClick={reloadEditor}
@@ -565,7 +565,7 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
               touchAction: 'manipulation'
             }}
           >
-            🔄 Reload Editor
+            Reload Editor
           </button>
         </div>
       )}
@@ -579,7 +579,7 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
           fontSize: '0.9rem',
           marginTop: '10px'
         }}>
-          ❌ {error}
+          Error: {error}
         </div>
       )}
     </div>
