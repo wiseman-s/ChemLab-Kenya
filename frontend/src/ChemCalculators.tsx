@@ -7,7 +7,7 @@ const ChemCalculators: React.FC = () => {
 
   return (
     <div style={{ padding: '20px', background: 'white', borderRadius: '8px', border: '1px solid #e0e0e0' }}>
-      <h2 style={{ color: '#00695c', marginBottom: '20px' }}>🧮 Chemistry Calculators</h2>
+      <h2 style={{ color: '#00695c', marginBottom: '20px' }}>Chemistry Calculators</h2>
       
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
@@ -155,7 +155,7 @@ const MolarityCalculator: React.FC = () => {
         
         {error && (
           <div role="alert" aria-live="polite" style={{ color: '#d32f2f', padding: '10px', background: '#ffebee', borderRadius: '4px' }}>
-            ❌ {error}
+            Error: {error}
           </div>
         )}
         
@@ -312,7 +312,7 @@ const MolesMassCalculator: React.FC = () => {
         
         {error && (
           <div role="alert" aria-live="polite" style={{ color: '#d32f2f', padding: '10px', background: '#ffebee', borderRadius: '4px' }}>
-            ❌ {error}
+            Error: {error}
           </div>
         )}
         
@@ -460,7 +460,7 @@ const DilutionCalculator: React.FC = () => {
       
       {error && (
         <div role="alert" aria-live="polite" style={{ color: '#d32f2f', padding: '10px', background: '#ffebee', borderRadius: '4px', marginTop: '15px' }}>
-          ❌ {error}
+          Error: {error}
         </div>
       )}
       
@@ -614,7 +614,7 @@ const GasLawCalculator: React.FC = () => {
       
       {error && (
         <div role="alert" aria-live="polite" style={{ color: '#d32f2f', padding: '10px', background: '#ffebee', borderRadius: '4px', marginTop: '15px' }}>
-          ❌ {error}
+          Error: {error}
         </div>
       )}
       
