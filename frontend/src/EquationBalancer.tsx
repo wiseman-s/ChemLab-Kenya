@@ -50,7 +50,7 @@ const EquationBalancer: React.FC = () => {
 
   return (
     <div style={{ padding: '20px' }}>
-      <h3 style={{ color: '#00695c', marginTop: 0 }}>⚖️ Chemical Equation Balancer</h3>
+      <h3 style={{ color: '#00695c', marginTop: 0 }}>Chemical Equation Balancer</h3>
       <p style={{ color: '#666', marginBottom: '15px' }}>
         Enter a chemical equation and get the balanced version.
       </p>
@@ -91,7 +91,7 @@ const EquationBalancer: React.FC = () => {
               fontWeight: 'bold',
             }}
           >
-            {loading ? '⏳ Balancing...' : '⚖️ Balance'}
+            {loading ? 'Balancing...' : 'Balance'}
           </button>
         </div>
       </div>
@@ -100,19 +100,19 @@ const EquationBalancer: React.FC = () => {
         <strong>Quick Examples:</strong>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '5px' }}>
           <button onClick={() => loadExample('CH4 + O2 -> CO2 + H2O')} style={exampleStyle}>
-            🔥 CH4 + O2
+            CH4 + O2
           </button>
           <button onClick={() => loadExample('Fe + O2 -> Fe2O3')} style={exampleStyle}>
-            🪨 Fe + O2
+            Fe + O2
           </button>
           <button onClick={() => loadExample('H2 + O2 -> H2O')} style={exampleStyle}>
-            💧 H2 + O2
+            H2 + O2
           </button>
           <button onClick={() => loadExample('Na + Cl2 -> NaCl')} style={exampleStyle}>
-            🧂 Na + Cl2
+            Na + Cl2
           </button>
           <button onClick={() => loadExample('C3H8 + O2 -> CO2 + H2O')} style={exampleStyle}>
-            🔥 C3H8 + O2
+            C3H8 + O2
           </button>
         </div>
       </div>
@@ -126,7 +126,7 @@ const EquationBalancer: React.FC = () => {
           color: '#d32f2f',
           border: '1px solid #ef9a9a',
         }}>
-          ❌ {error}
+          Error: {error}
         </div>
       )}
 
@@ -139,7 +139,7 @@ const EquationBalancer: React.FC = () => {
           border: '1px solid #00897b',
         }}>
           <h4 style={{ color: '#00695c', margin: 0, marginBottom: '10px' }}>
-            ✅ Balanced Equation
+            Balanced Equation
           </h4>
           <div style={{
             fontSize: '22px',
