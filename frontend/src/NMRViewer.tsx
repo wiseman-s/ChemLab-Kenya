@@ -98,8 +98,8 @@ const NMRViewer: React.FC<{ smiles: string }> = ({ smiles }) => {
       'dq': 'Doublet of quartets',
       // 13C peaks come back as DEPT-style CH-count labels rather than a
       // coupling pattern (see backend) — pass those through as-is.
-      'CH3': 'CH₃',
-      'CH2': 'CH₂',
+      'CH3': 'CH3',
+      'CH2': 'CH2',
       'CH': 'CH',
       'C': 'C (no attached H)',
     };
@@ -109,7 +109,7 @@ const NMRViewer: React.FC<{ smiles: string }> = ({ smiles }) => {
   if (!smiles) {
     return (
       <div style={{ color: '#666', padding: '15px', textAlign: 'center' }}>
-        🧪 Draw a molecule first to predict its NMR spectrum.
+        Draw a molecule first to predict its NMR spectrum.
       </div>
     );
   }
@@ -123,7 +123,7 @@ const NMRViewer: React.FC<{ smiles: string }> = ({ smiles }) => {
       marginTop: '15px',
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
-        <h4 style={{ color: '#00695c', margin: 0 }}>🧪 NMR Prediction</h4>
+        <h4 style={{ color: '#00695c', margin: 0 }}>NMR Prediction</h4>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <button
             onClick={() => setNucleus('1H')}
@@ -140,7 +140,7 @@ const NMRViewer: React.FC<{ smiles: string }> = ({ smiles }) => {
               opacity: loading ? 0.7 : 1,
             }}
           >
-            ¹H
+            1H
           </button>
           <button
             onClick={() => setNucleus('13C')}
@@ -157,7 +157,7 @@ const NMRViewer: React.FC<{ smiles: string }> = ({ smiles }) => {
               opacity: loading ? 0.7 : 1,
             }}
           >
-            ¹³C
+            13C
           </button>
           {data && (
             <span style={{ fontSize: '11px', color: '#999' }}>
@@ -169,13 +169,13 @@ const NMRViewer: React.FC<{ smiles: string }> = ({ smiles }) => {
 
       {loading && (
         <div style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
-          ⏳ Predicting NMR spectrum...
+          Predicting NMR spectrum...
         </div>
       )}
 
       {error && (
         <div style={{ color: '#d32f2f', padding: '10px', background: '#ffebee', borderRadius: '4px', marginTop: '10px' }}>
-          ❌ {error}
+          Error: {error}
         </div>
       )}
 
@@ -211,7 +211,7 @@ const NMRViewer: React.FC<{ smiles: string }> = ({ smiles }) => {
               fontSize: '12px',
               color: '#7a5c00',
             }}>
-              ⚠️ This is a rough estimate, not a database-backed prediction
+              Note: This is a rough estimate, not a database-backed prediction
               {data.note ? ` (${data.note})` : ''}. Treat these numbers as
               approximate.
             </div>
@@ -222,7 +222,7 @@ const NMRViewer: React.FC<{ smiles: string }> = ({ smiles }) => {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                 <thead>
                   <tr style={{ background: '#e0e0e0' }}>
-                    <th style={{ padding: '6px', textAlign: 'left' }}>δ (ppm)</th>
+                    <th style={{ padding: '6px', textAlign: 'left' }}>d (ppm)</th>
                     <th style={{ padding: '6px', textAlign: 'left' }}>
                       {data.nucleus === '13C' ? 'Carbon Type' : 'Multiplicity'}
                     </th>
