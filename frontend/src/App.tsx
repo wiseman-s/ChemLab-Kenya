@@ -7,7 +7,7 @@ import ChemCalculators from './ChemCalculators';
 import PhysicsCalculators from './PhysicsCalculators';
 import PeriodicTableExplorer from './PeriodicTableExplorer';
 import CompoundExplorer from './components/CompoundExplorer';
-import ChatBot from './ChatBot';  // ✅ Correct import path
+import ChatBot from './ChatBot';
 import './App.css';
 
 // Import the API URL from config
@@ -163,7 +163,7 @@ function App() {
 
       {/* Header */}
       <header>
-        <h1>🧪 ChemLab Kenya</h1>
+        <h1>ChemLab Kenya</h1>
 
         <p>
           Chemistry & Physics Software for Kenyan Schools & Universities
@@ -183,42 +183,42 @@ function App() {
           style={navBtnStyle(section === 'analyzer')}
           onClick={() => setSection('analyzer')}
         >
-          🧪 Molecule Analyzer
+          Molecule Analyzer
         </button>
 
         <button
           style={navBtnStyle(section === 'balancer')}
           onClick={() => setSection('balancer')}
         >
-          ⚖️ Equation Balancer
+          Equation Balancer
         </button>
 
         <button
           style={navBtnStyle(section === 'calculators')}
           onClick={() => setSection('calculators')}
         >
-          🧮 Chem Calculators
+          Chem Calculators
         </button>
 
         <button
           style={navBtnStyle(section === 'periodic')}
           onClick={() => setSection('periodic')}
         >
-          🔬 Periodic Table
+          Periodic Table
         </button>
 
         <button
           style={navBtnStyle(section === 'compound')}
           onClick={() => setSection('compound')}
         >
-          🧬 Compound Explorer
+          Compound Explorer
         </button>
 
         <button
           style={navBtnStyle(section === 'physics')}
           onClick={() => setSection('physics')}
         >
-          📐 Physics Calculators
+          Physics Calculators
         </button>
       </nav>
 
@@ -237,7 +237,7 @@ function App() {
           >
 
             <div>
-              <h3>✏️ Molecular Editor</h3>
+              <h3>Molecular Editor</h3>
 
               <KetcherEditor />
 
@@ -249,7 +249,7 @@ function App() {
                     fontSize: '0.9rem'
                   }}
                 >
-                  ⏳ Analyzing...
+                  Analyzing...
                 </div>
               )}
             </div>
@@ -263,14 +263,14 @@ function App() {
                   marginBottom: '10px'
                 }}
               >
-                <h3>📊 Analysis Results</h3>
+                <h3>Analysis Results</h3>
               </div>
 
               {analysis &&
                 !analysis.error &&
                 analysis.smiles && (
                   <div style={{ marginBottom: '15px' }}>
-                    <h4>🧊 3D Structure</h4>
+                    <h4>3D Structure</h4>
 
                     <Mol3DViewer
                       smiles={analysis.smiles}
@@ -290,7 +290,7 @@ function App() {
                   analysis.error ? (
 
                     <div style={{ color: '#d32f2f' }}>
-                      <strong>❌ Error:</strong>{' '}
+                      <strong>Error:</strong>{' '}
                       {analysis.error}
                     </div>
 
@@ -304,7 +304,7 @@ function App() {
                           marginBottom: '15px'
                         }}
                       >
-                        ✅ {analysis.formula}
+                        {analysis.formula}
                       </h4>
 
                       <div
@@ -399,7 +399,7 @@ function App() {
 
                       {/* Structural Properties */}
                       <h4 style={sectionHeaderStyle}>
-                        🔗 Structural Properties
+                        Structural Properties
                       </h4>
 
                       <div
@@ -436,7 +436,7 @@ function App() {
                         </div>
 
                         <div style={cardStyle}>
-                          <strong>Fraction Csp³</strong>
+                          <strong>Fraction Csp3</strong>
                           <div>{analysis.fraction_csp3}</div>
                         </div>
 
@@ -469,7 +469,7 @@ function App() {
 
                       {/* Identifiers */}
                       <h4 style={sectionHeaderStyle}>
-                        🏷️ Identifiers
+                        Identifiers
                       </h4>
 
                       <div
@@ -513,7 +513,7 @@ function App() {
 
                       {/* Drug-likeness */}
                       <h4 style={sectionHeaderStyle}>
-                        💊 Drug-likeness
+                        Drug-likeness
                       </h4>
 
                       <div
@@ -535,7 +535,7 @@ function App() {
                                 color: '#666'
                               }}
                             >
-                              (0–1, higher = more drug-like)
+                              (0-1, higher = more drug-like)
                             </span>
                           </div>
                         </div>
@@ -554,8 +554,8 @@ function App() {
 
                           <div>
                             {analysis.lipinski_pass
-                              ? '✅ Pass'
-                              : '⚠️ Fail'}{' '}
+                              ? 'Pass'
+                              : 'Fail'}{' '}
                             (
                             {analysis.lipinski_violations}{' '}
                             violation
@@ -574,11 +574,11 @@ function App() {
                 ) : (
 
                   <p style={{ color: '#666' }}>
-                    🔹 Draw a molecule in Ketcher, click
+                    Draw a molecule in Ketcher, click
                     "Get SMILES", then click "Analyze"
                     <br />
                     <br />
-                    🔹 Or paste a SMILES string in the box
+                    Or paste a SMILES string in the box
                     above the editor
                   </p>
 
@@ -594,7 +594,7 @@ function App() {
         ====================================================== */}
         {section === 'balancer' && (
           <div>
-            <h3>⚖️ Chemical Equation Balancer</h3>
+            <h3>Chemical Equation Balancer</h3>
 
             <div style={panelStyle}>
               <EquationBalancer />
@@ -607,7 +607,7 @@ function App() {
         ====================================================== */}
         {section === 'calculators' && (
           <div>
-            <h3>🧮 Chemistry Calculators</h3>
+            <h3>Chemistry Calculators</h3>
 
             <div style={panelStyle}>
               <ChemCalculators />
@@ -620,7 +620,7 @@ function App() {
         ====================================================== */}
         {section === 'periodic' && (
           <div>
-            <h3>🔬 Periodic Table Explorer</h3>
+            <h3>Periodic Table Explorer</h3>
 
             <div style={panelStyle}>
               <PeriodicTableExplorer />
@@ -633,7 +633,7 @@ function App() {
         ====================================================== */}
         {section === 'compound' && (
           <div>
-            <h3>🧬 Compound Explorer</h3>
+            <h3>Compound Explorer</h3>
 
             <div style={panelStyle}>
               <CompoundExplorer />
@@ -646,7 +646,7 @@ function App() {
         ====================================================== */}
         {section === 'physics' && (
           <div>
-            <h3>📐 Physics Calculators</h3>
+            <h3>Physics Calculators</h3>
 
             <div style={panelStyle}>
               <PhysicsCalculators />
@@ -666,7 +666,7 @@ function App() {
           }}
         >
           <h4 style={{ color: '#00695c' }}>
-            🇰🇪 Kenya Curriculum Integration
+            Kenya Curriculum Integration
           </h4>
 
           <p>This tool is designed for:</p>
@@ -678,23 +678,23 @@ function App() {
             }}
           >
             <li>
-              📚 Form 3 Chemistry - Organic Chemistry
+              Form 3 Chemistry - Organic Chemistry
             </li>
 
             <li>
-              📚 Form 4 Chemistry - Industrial Chemistry
+              Form 4 Chemistry - Industrial Chemistry
             </li>
 
             <li>
-              📐 Form 3–4 Physics - Mechanics & Energy
+              Form 3-4 Physics - Mechanics & Energy
             </li>
 
             <li>
-              🎓 University Chemistry - Organic Synthesis
+              University Chemistry - Organic Synthesis
             </li>
 
             <li>
-              🔬 Laboratory Research at Kenyan Universities
+              Laboratory Research at Kenyan Universities
             </li>
           </ul>
         </div>
