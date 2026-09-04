@@ -155,7 +155,7 @@ function App() {
 
   // Set document title
   useEffect(() => {
-    document.title = 'ChemLab Kenya - Chemistry & Physics Software';
+    document.title = 'ChemLab Kenya - Chemistry and Physics Software';
   }, []);
 
   return (
@@ -166,7 +166,7 @@ function App() {
         <h1>ChemLab Kenya</h1>
 
         <p>
-          Chemistry & Physics Software for Kenyan Schools & Universities
+          Chemistry and Physics Software for Kenyan Schools and Universities
         </p>
       </header>
 
