@@ -7,8 +7,9 @@ import {
 } from '../utils/formulaComposition';
 import { API_URL } from '../config';
 
-// Backend API URL - using config
-const API_BASE = `${API_URL}/api`;
+// Backend API URL — uses relative path in production so Vercel proxies
+// requests to Render. The browser only ever sees chemlab.co.ke.
+const API_BASE = API_URL ? `${API_URL}/api` : '/api';
 
 async function searchCompoundBackend(name: string) {
   const response = await fetch(
