@@ -2,4 +2,4 @@ User-agent: *
 Allow: /
 Disallow: /api/
 
-Sitemap: https://chemlab.co.ke/sitemap.xml
+Sitemap: https://www.chemlab.co.ke/sitemap.xml
