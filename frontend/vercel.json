@@ -3,59 +3,27 @@
   "outputDirectory": "dist",
   "devCommand": "npm run dev",
   "installCommand": "npm install --legacy-peer-deps",
-  "rewrites": [
+  "redirects": [
     {
-      "source": "/api/:path*",
-      "destination": "https://chemlab-kenya.onrender.com/api/:path*"
-    },
-    {
-      "source": "/analyze",
-      "destination": "https://chemlab-kenya.onrender.com/analyze"
-    },
-    {
-      "source": "/generate_3d",
-      "destination": "https://chemlab-kenya.onrender.com/generate_3d"
-    },
-    {
-      "source": "/balance_equation",
-      "destination": "https://chemlab-kenya.onrender.com/balance_equation"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/"
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "www.chemlab.co.ke" }],
+      "destination": "https://chemlab.co.ke/:path*",
+      "permanent": true
     }
   ],
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "https://chemlab-kenya.onrender.com/api/:path*" },
+    { "source": "/analyze", "destination": "https://chemlab-kenya.onrender.com/analyze" },
+    { "source": "/generate_3d", "destination": "https://chemlab-kenya.onrender.com/generate_3d" },
+    { "source": "/balance_equation", "destination": "https://chemlab-kenya.onrender.com/balance_equation" },
+    { "source": "/(.*)", "destination": "/" }
+  ],
   "headers": [
-    {
-      "source": "/sitemap.xml",
-      "headers": [
-        {
-          "key": "Content-Type",
-          "value": "application/xml; charset=utf-8"
-        }
-      ]
-    },
-    {
-      "source": "/robots.txt",
-      "headers": [
-        {
-          "key": "Content-Type",
-          "value": "text/plain; charset=utf-8"
-        }
-      ]
-    },
-    {
-      "source": "/(.*)",
-      "headers": [
-        {
-          "key": "X-Content-Type-Options",
-          "value": "nosniff"
-        },
-        {
-          "key": "X-Frame-Options",
-          "value": "DENY"
-        }
-      ]
-    }
+    { "source": "/sitemap.xml", "headers": [{ "key": "Content-Type", "value": "application/xml; charset=utf-8" }] },
+    { "source": "/robots.txt", "headers": [{ "key": "Content-Type", "value": "text/plain; charset=utf-8" }] },
+    { "source": "/(.*)", "headers": [
+      { "key": "X-Content-Type-Options", "value": "nosniff" },
+      { "key": "X-Frame-Options", "value": "DENY" }
+    ]}
   ]
 }
