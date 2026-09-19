@@ -1,0 +1,43 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install --legacy-peer-deps",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://chemlab-kenya.onrender.com/api/:path*"
+    },
+    {
+      "source": "/analyze",
+      "destination": "https://chemlab-kenya.onrender.com/analyze"
+    },
+    {
+      "source": "/generate_3d",
+      "destination": "https://chemlab-kenya.onrender.com/generate_3d"
+    },
+    {
+      "source": "/balance_equation",
+      "destination": "https://chemlab-kenya.onrender.com/balance_equation"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        }
+      ]
+    }
+  ]
+}
