@@ -5,9 +5,9 @@
   "installCommand": "npm install --legacy-peer-deps",
   "redirects": [
     {
-      "source": "/:path*",
+      "source": "/((?!assets/|favicon|robots\\.txt|sitemap\\.xml|og-image).*)",
       "has": [{ "type": "host", "value": "www.chemlab.co.ke" }],
-      "destination": "https://chemlab.co.ke/:path*",
+      "destination": "https://chemlab.co.ke/$1",
       "permanent": true
     }
   ],
@@ -24,6 +24,10 @@
   "headers": [
     { "source": "/sitemap.xml", "headers": [{ "key": "Content-Type", "value": "application/xml; charset=utf-8" }] },
     { "source": "/robots.txt", "headers": [{ "key": "Content-Type", "value": "text/plain; charset=utf-8" }] },
+    { "source": "/assets/(.*)", "headers": [
+      { "key": "Access-Control-Allow-Origin", "value": "*" },
+      { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+    ]},
     { "source": "/(.*)", "headers": [
       { "key": "X-Content-Type-Options", "value": "nosniff" },
       { "key": "X-Frame-Options", "value": "DENY" }
