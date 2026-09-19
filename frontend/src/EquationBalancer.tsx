@@ -1,5 +1,6 @@
 // src/EquationBalancer.tsx
 import React, { useState } from 'react';
+import { API_URL } from './config';
 
 const EquationBalancer: React.FC = () => {
   const [equation, setEquation] = useState('CH4 + O2 -> CO2 + H2O');
@@ -23,9 +24,10 @@ const EquationBalancer: React.FC = () => {
         .replace(/\s/g, '')
         .replace(/->/g, '->');
 
-      // IMPORTANT: Use the correct endpoint without double slash
+      // Use API_URL from config — relative path in production goes through
+      // Vercel's proxy to Render, hiding the backend URL from the browser.
       const response = await fetch(
-        `https://chemlab-kenya.onrender.com/balance_equation?equation=${encodeURIComponent(cleanEquation)}`
+        `${API_URL}/balance_equation?equation=${encodeURIComponent(cleanEquation)}`
       );
 
       if (!response.ok) {
