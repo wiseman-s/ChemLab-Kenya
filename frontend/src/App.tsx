@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+https://github.com/wiseman-s/ChemLab-Kenya/pulseimport React, { useState, useEffect } from 'react';
 import KetcherEditor from './KetcherEditor';
 import Mol3DViewer from './Mol3DViewer';
 import NMRViewer from './NMRViewer';
@@ -666,6 +666,18 @@ function App() {
           }}
         >
           <h4 style={{ color: '#00695c' }}>
+                   {/* =====================================================
+            KENYA CURRICULUM INTEGRATION
+        ====================================================== */}
+        <div
+          style={{
+            marginTop: '40px',
+            padding: '20px',
+            background: '#e8f5e9',
+            borderRadius: '8px'
+          }}
+        >
+          <h4 style={{ color: '#00695c' }}>
             Kenya Curriculum Integration
           </h4>
 
@@ -678,19 +690,19 @@ function App() {
             }}
           >
             <li>
-              Form 3 Chemistry - Organic Chemistry
+              Organic Chemistry
             </li>
 
             <li>
-              Form 4 Chemistry - Industrial Chemistry
+              Industrial Chemistry
             </li>
 
             <li>
-              Form 3-4 Physics - Mechanics & Energy
+              Mechanics & Energy
             </li>
 
             <li>
-              University Chemistry - Organic Synthesis
+              Organic Synthesis
             </li>
 
             <li>
@@ -700,6 +712,19 @@ function App() {
         </div>
 
       </main>
+
+      {/* Footer */}
+      <footer
+        style={{
+          textAlign: 'center',
+          padding: '20px',
+          marginTop: '20px',
+          color: '#666',
+          fontSize: '0.85rem'
+        }}
+      >
+        © ChemLab Kenya 2026
+      </footer>
 
       {/* ChatBot - Floating button in bottom-right corner */}
       <ChatBot />
