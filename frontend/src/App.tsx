@@ -1,4 +1,4 @@
-https://github.com/wiseman-s/ChemLab-Kenya/pulseimport React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import KetcherEditor from './KetcherEditor';
 import Mol3DViewer from './Mol3DViewer';
 import NMRViewer from './NMRViewer';
@@ -655,18 +655,6 @@ function App() {
         )}
 
         {/* =====================================================
-            KENYA CURRICULUM INTEGRATION
-        ====================================================== */}
-        <div
-          style={{
-            marginTop: '40px',
-            padding: '20px',
-            background: '#e8f5e9',
-            borderRadius: '8px'
-          }}
-        >
-          <h4 style={{ color: '#00695c' }}>
-                   {/* =====================================================
             KENYA CURRICULUM INTEGRATION
         ====================================================== */}
         <div
