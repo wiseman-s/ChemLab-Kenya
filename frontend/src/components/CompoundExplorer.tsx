@@ -6,18 +6,21 @@ import {
 } from '../utils/formulaComposition';
 import {
   searchCompounds,
+  fetchExtras,
   structureImageUrl,
+  pubchemPageUrl,
   SearchError,
   type Compound,
+  type CompoundExtras,
   type SearchMode,
-} from '../utils/compoundApi';
+} from '../utils/pubchem';
 
 const MODES: { value: SearchMode; label: string; placeholder: string }[] = [
-  { value: 'auto', label: 'Auto-detect', placeholder: 'e.g. nitrobenzene, C6H5NO2, 98-95-3, aspirin...' },
+  { value: 'auto', label: 'Auto-detect', placeholder: 'e.g. nitrobenzene, C6H5NO2, 50-00-0, aspirin...' },
   { value: 'name', label: 'Name / CAS', placeholder: 'e.g. nitrobenzene, acetic acid, 98-95-3' },
   { value: 'formula', label: 'Formula', placeholder: 'e.g. C6H5NO2 (case-sensitive)' },
   { value: 'smiles', label: 'SMILES', placeholder: 'e.g. C1=CC=C(C=C1)[N+](=O)[O-]' },
-  { value: 'cid', label: 'Compound ID', placeholder: 'e.g. 7416' },
+  { value: 'cid', label: 'PubChem CID', placeholder: 'e.g. 7416' },
 ];
 
 const card: React.CSSProperties = { padding: '12px', background: 'white', borderRadius: '5px' };
@@ -27,6 +30,7 @@ const CompoundExplorer: React.FC = () => {
   const [mode, setMode] = useState<SearchMode>('auto');
   const [results, setResults] = useState<Compound[]>([]);
   const [selected, setSelected] = useState<Compound | null>(null);
+  const [extras, setExtras] = useState<CompoundExtras | null>(null);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -49,6 +53,17 @@ const CompoundExplorer: React.FC = () => {
     }
   }, [selected]);
 
+  const selectCompound = (compound: Compound) => {
+    setSelected(compound);
+    setExtras(null);
+    const id = requestId.current;
+    fetchExtras(compound.cid)
+      .then((e) => {
+        if (id === requestId.current) setExtras(e);
+      })
+      .catch(() => {});
+  };
+
   const runSearch = async (query: string, searchMode: SearchMode = mode) => {
     const q = query.trim();
     if (!q) {
@@ -62,12 +77,13 @@ const CompoundExplorer: React.FC = () => {
     setSuggestions([]);
     setResults([]);
     setSelected(null);
+    setExtras(null);
 
     try {
       const found = await searchCompounds(q, searchMode);
       if (id !== requestId.current) return;
       setResults(found);
-      setSelected(found[0]);
+      selectCompound(found[0]);
     } catch (err) {
       if (id !== requestId.current) return;
       if (err instanceof SearchError) {
@@ -85,16 +101,6 @@ const CompoundExplorer: React.FC = () => {
     if (e.key === 'Enter') runSearch(searchTerm);
   };
 
-  const fallbackCopy = (text: string, onCopied: () => void) => {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
-    onCopied();
-  };
-
   const copyText = (text: string, message: string) => {
     if (!text) return;
     const done = () => showToast(message);
@@ -103,6 +109,16 @@ const CompoundExplorer: React.FC = () => {
     } else {
       fallbackCopy(text, done);
     }
+  };
+
+  const fallbackCopy = (text: string, onCopied: () => void) => {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    onCopied();
   };
 
   const currentMode = MODES.find((m) => m.value === mode)!;
@@ -131,11 +147,6 @@ const CompoundExplorer: React.FC = () => {
       ]
     : [];
 
-  const hasAnyProperty = selected
-    ? [selected.exactMass, selected.xlogp, selected.tpsa, selected.hbd, selected.hba,
-       selected.rotatableBonds, selected.charge, selected.complexity].some((v) => v != null && v !== '')
-    : false;
-
   return (
     <div
       style={{
@@ -149,7 +160,7 @@ const CompoundExplorer: React.FC = () => {
     >
       <h2 style={{ color: '#00695c', marginBottom: '8px' }}>Compound Explorer</h2>
       <p style={{ color: '#666', marginTop: 0, marginBottom: '20px' }}>
-        Search by name, CAS number, molecular formula, SMILES or compound ID. Copy the SMILES and
+        Search by name, CAS number, molecular formula, SMILES or PubChem CID. Copy the SMILES and
         paste it into the Molecular Analyzer to view the 2D and 3D structure.
       </p>
 
@@ -233,11 +244,11 @@ const CompoundExplorer: React.FC = () => {
           <strong style={{ color: '#00695c' }}>{results.length} matches</strong>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '8px' }}>
             {results.map((r) => {
-              const active = selected?.id === r.id;
+              const active = selected?.cid === r.cid;
               return (
                 <button
-                  key={r.id}
-                  onClick={() => setSelected(r)}
+                  key={r.cid}
+                  onClick={() => selectCompound(r)}
                   style={{
                     padding: '8px 12px',
                     borderRadius: '6px',
@@ -249,7 +260,7 @@ const CompoundExplorer: React.FC = () => {
                 >
                   <div style={{ fontWeight: 'bold' }}>{r.title}</div>
                   <div style={{ fontFamily: 'monospace', fontSize: '12px', color: '#666' }}>
-                    {r.molecularFormula}
+                    {r.molecularFormula} · CID {r.cid}
                   </div>
                 </button>
               );
@@ -261,35 +272,34 @@ const CompoundExplorer: React.FC = () => {
       {/* Selected compound */}
       {selected && (
         <div style={{ marginTop: '25px', padding: '20px', background: '#f5f5f5', borderRadius: '8px', border: '1px solid #e0e0e0' }}>
-          <h2 style={{ color: '#00695c', marginTop: 0, marginBottom: '10px', textTransform: 'capitalize' }}>
-            {selected.title}
-          </h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: '8px' }}>
+            <h2 style={{ color: '#00695c', marginTop: 0, marginBottom: '10px', textTransform: 'capitalize' }}>
+              {selected.title}
+            </h2>
+            <a href={pubchemPageUrl(selected.cid)} target="_blank" rel="noopener noreferrer" style={{ color: '#00897b', fontSize: '14px' }}>
+              View on PubChem (CID {selected.cid}) ↗
+            </a>
+          </div>
 
-          {selected.description && (
+          {extras?.description && (
             <p style={{ ...card, marginTop: 0, color: '#444', fontSize: '14px', lineHeight: 1.5 }}>
-              {selected.description}
+              {extras.description}
             </p>
           )}
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '15px' }}>
-            {selected.smiles && (
-              <div style={{ ...card, display: 'flex', justifyContent: 'center', alignItems: 'center', gridColumn: '1 / -1' }}>
-                <img
-                  src={structureImageUrl(selected.smiles)}
-                  alt={`2D structure of ${selected.title}`}
-                  style={{ maxWidth: '100%', height: 'auto', maxHeight: '260px' }}
-                  onError={(e) => {
-                    const parent = e.currentTarget.parentElement as HTMLElement | null;
-                    if (parent) parent.style.display = 'none';
-                  }}
-                />
-              </div>
-            )}
+            <div style={{ ...card, display: 'flex', justifyContent: 'center', alignItems: 'center', gridColumn: '1 / -1' }}>
+              <img
+                src={structureImageUrl(selected.cid)}
+                alt={`2D structure of ${selected.title}`}
+                style={{ maxWidth: '100%', height: 'auto', maxHeight: '260px' }}
+              />
+            </div>
 
             <div style={card}>
               <strong>Molecular Formula</strong>
               <div style={{ fontSize: '18px', marginTop: '5px', fontFamily: 'monospace' }}>
-                {selected.molecularFormula || 'Not available'}
+                {selected.molecularFormula}
               </div>
             </div>
 
@@ -334,25 +344,23 @@ const CompoundExplorer: React.FC = () => {
               </div>
             )}
 
-            {hasAnyProperty && (
-              <div style={{ ...card, gridColumn: '1 / -1' }}>
-                <strong>Computed Properties</strong>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px', marginTop: '10px' }}>
-                  {properties.map((p) => (
-                    <div key={p.label} style={{ background: '#fafafa', padding: '8px', borderRadius: '4px', border: '1px solid #eee' }}>
-                      <div style={{ fontSize: '12px', color: '#666' }}>{p.label}</div>
-                      <div style={{ fontWeight: 'bold' }}>{p.value}</div>
-                    </div>
-                  ))}
-                </div>
+            <div style={{ ...card, gridColumn: '1 / -1' }}>
+              <strong>Computed Properties</strong>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px', marginTop: '10px' }}>
+                {properties.map((p) => (
+                  <div key={p.label} style={{ background: '#fafafa', padding: '8px', borderRadius: '4px', border: '1px solid #eee' }}>
+                    <div style={{ fontSize: '12px', color: '#666' }}>{p.label}</div>
+                    <div style={{ fontWeight: 'bold' }}>{p.value}</div>
+                  </div>
+                ))}
               </div>
-            )}
+            </div>
 
-            {selected.synonyms.length > 0 && (
+            {extras && extras.synonyms.length > 0 && (
               <div style={{ ...card, gridColumn: '1 / -1' }}>
                 <strong>Also known as</strong>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
-                  {selected.synonyms.map((s) => (
+                  {extras.synonyms.map((s) => (
                     <span key={s} style={{ padding: '3px 10px', background: '#e0f2f1', borderRadius: '12px', fontSize: '13px', color: '#00695c' }}>
                       {s}
                     </span>
@@ -388,6 +396,10 @@ const CompoundExplorer: React.FC = () => {
               </p>
             </div>
           )}
+
+          <p style={{ marginTop: '15px', marginBottom: 0, fontSize: '12px', color: '#888' }}>
+            Data from PubChem (NCBI).
+          </p>
         </div>
       )}
 
