@@ -1,6 +1,7 @@
 # backend/chemistry/pubchem.py
 
 import asyncio
+import hashlib
 import json
 import time
 import os
@@ -13,17 +14,13 @@ from urllib.error import HTTPError, URLError
 from datetime import datetime, timedelta
 
 # ============================================================
-# SSL FIX FOR WINDOWS
+# SSL
 # ============================================================
 try:
     import certifi
     ssl_context = ssl.create_default_context(cafile=certifi.where())
 except ImportError:
-    import warnings
-    warnings.warn("certifi not installed. SSL verification disabled for development.")
-    ssl_context = ssl.create_default_context()
-    ssl_context.check_hostname = False
-    ssl_context.verify_mode = ssl.CERT_NONE
+    raise RuntimeError("certifi is required. Run: pip install certifi")
 
 # ============================================================
 # CONFIGURATION
@@ -38,15 +35,13 @@ WIKIPEDIA_API = "https://en.wikipedia.org/w/api.php"
 RSC_API_KEY = os.environ.get("RSC_API_KEY", "")
 RSC_API_BASE = "https://api.rsc.org/compounds/v1"
 
-# Keep this short. A dead provider should fail fast so we can fall through
-# to the next one instead of eating 20-30s per search.
 REQUEST_TIMEOUT = 6.0
-MAX_RETRIES = 1  # 1 retry (2 attempts total) is plenty given we have 5 providers
+MAX_RETRIES = 1
 BACKOFF_BASE_SECONDS = 0.75
 CACHE_DURATION_HOURS = 24
 
 # ============================================================
-# NAME ALIASES (Complete list for Kenyan curriculum)
+# NAME ALIASES
 # ============================================================
 
 NAME_ALIASES: Dict[str, List[str]] = {
@@ -182,33 +177,29 @@ NAME_ALIASES: Dict[str, List[str]] = {
 }
 
 # ============================================================
-# RATE LIMITING (PER PROVIDER)
+# RATE LIMITING (PER PROVIDER, ONE LOCK EACH)
 # ============================================================
-# One shared mechanism instead of four hand-copied near-duplicate functions.
-# Add a new provider by adding one line to RATE_LIMITS.
 
 RATE_LIMITS: Dict[str, float] = {
-    "cactus": 1.0,       # NIH asks for max 1 req/sec
-    "pubchem": 0.22,     # ~4.5 req/sec
-    "chembl": 0.5,       # 2 req/sec
-    "wikipedia": 0.1,    # no hard limit, but be polite
-    "chemspider": 0.5,   # RSC free tier is limited; be conservative
+    "cactus": 1.0,
+    "pubchem": 0.22,
+    "chembl": 0.5,
+    "wikipedia": 0.1,
+    "chemspider": 0.5,
 }
 
 _last_request_time: Dict[str, float] = {}
-_rate_lock = asyncio.Lock()
+_rate_locks: Dict[str, asyncio.Lock] = {}
 
 
 async def _wait_for_rate(provider: str):
-    """Generic per-provider rate limiter. Safe under concurrent calls."""
     min_interval = RATE_LIMITS.get(provider, 0.0)
     if min_interval <= 0:
         return
 
-    async with _rate_lock:
-        now = time.monotonic()
-        last = _last_request_time.get(provider, 0.0)
-        wait_time = min_interval - (now - last)
+    lock = _rate_locks.setdefault(provider, asyncio.Lock())
+    async with lock:
+        wait_time = min_interval - (time.monotonic() - _last_request_time.get(provider, 0.0))
         if wait_time > 0:
             await asyncio.sleep(wait_time)
         _last_request_time[provider] = time.monotonic()
@@ -223,22 +214,24 @@ os.makedirs(CACHE_DIR, exist_ok=True)
 
 
 def _get_cache_key(name: str) -> str:
-    return name.lower().replace(" ", "_").replace("/", "_").replace("\\", "_")
+    # Readable slug + hash of the exact original text, so "Co" and "CO" never collide
+    slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")[:60]
+    digest = hashlib.sha1(name.encode("utf-8")).hexdigest()[:8]
+    return f"{slug}_{digest}"
 
 
 def _get_cache_path(key: str) -> str:
     return os.path.join(CACHE_DIR, f"{key}.json")
 
 
-def _cache_get(name: str) -> Optional[Dict]:
-    key = _get_cache_key(name)
-    path = _get_cache_path(key)
+def _cache_get(name: str) -> Optional[Any]:
+    path = _get_cache_path(_get_cache_key(name))
 
     if not os.path.exists(path):
         return None
 
     try:
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
         cached_time = datetime.fromisoformat(data.get("_cached_at", "2000-01-01T00:00:00"))
@@ -250,9 +243,8 @@ def _cache_get(name: str) -> Optional[Dict]:
         return None
 
 
-def _cache_set(name: str, result: Dict):
-    key = _get_cache_key(name)
-    path = _get_cache_path(key)
+def _cache_set(name: str, result: Any):
+    path = _get_cache_path(_get_cache_key(name))
 
     data = {
         "_cached_at": datetime.now().isoformat(),
@@ -260,14 +252,14 @@ def _cache_set(name: str, result: Dict):
     }
 
     try:
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f)
     except Exception:
         pass
 
 
 # ============================================================
-# HTTP REQUEST (WITH SSL FIX)
+# HTTP REQUEST
 # ============================================================
 
 def _blocking_get(url: str, headers: dict = None, timeout: float = REQUEST_TIMEOUT) -> tuple:
@@ -300,14 +292,14 @@ async def _get_json(
     timeout: float = REQUEST_TIMEOUT,
 ) -> Optional[dict]:
     """
-    Fetch JSON from a URL. If `provider` is given, applies that provider's
-    rate limit before every attempt (including retries).
+    Returns parsed JSON on success, {} when the service says "not found / bad input"
+    (404 or 400), and None on a real failure (network error, 429, 5xx, other errors).
     """
     for attempt in range(MAX_RETRIES + 1):
         if provider:
             await _wait_for_rate(provider)
 
-        print(f"Request (attempt {attempt + 1}/{MAX_RETRIES + 1}) -> {url[:80]}")
+        print(f"Request (attempt {attempt + 1}/{MAX_RETRIES + 1}) -> {url[:90]}")
 
         status, body = await asyncio.to_thread(_blocking_get, url, headers, timeout)
 
@@ -318,14 +310,13 @@ async def _get_json(
                 print("Invalid JSON response")
                 return None
 
-        if status == 404:
+        if status in {400, 404}:
             return {}
 
-        if status in {429, 500, 502, 503, 504}:
+        if status == 0 or status in {429, 500, 502, 503, 504}:
             print(f"Temporary error: {status}")
             if attempt < MAX_RETRIES:
-                wait = BACKOFF_BASE_SECONDS * (2 ** attempt)
-                await asyncio.sleep(wait)
+                await asyncio.sleep(BACKOFF_BASE_SECONDS * (2 ** attempt))
                 continue
             return None
 
@@ -345,6 +336,36 @@ async def _get_text(
     if provider:
         await _wait_for_rate(provider)
     return await asyncio.to_thread(_blocking_get, url, headers, timeout)
+
+
+# ============================================================
+# CIRCUIT BREAKER
+# ============================================================
+
+_provider_failures: Dict[str, int] = {}
+_provider_disabled_until: Dict[str, float] = {}
+CIRCUIT_FAILURE_THRESHOLD = 3
+CIRCUIT_COOLDOWN_DEFAULT = 60
+CIRCUIT_COOLDOWN = {"pubchem": 300}  # back off 5 minutes if PubChem throttles or blocks us
+
+
+def _is_provider_available(provider: str) -> bool:
+    if provider not in _provider_disabled_until:
+        return True
+    return time.time() > _provider_disabled_until[provider]
+
+
+def _record_failure(provider: str):
+    _provider_failures[provider] = _provider_failures.get(provider, 0) + 1
+    if _provider_failures[provider] >= CIRCUIT_FAILURE_THRESHOLD:
+        cooldown = CIRCUIT_COOLDOWN.get(provider, CIRCUIT_COOLDOWN_DEFAULT)
+        _provider_disabled_until[provider] = time.time() + cooldown
+        print(f"Circuit opened for {provider} ({cooldown}s cooldown)")
+
+
+def _record_success(provider: str):
+    _provider_failures[provider] = 0
+    _provider_disabled_until.pop(provider, None)
 
 
 # ============================================================
@@ -472,16 +493,18 @@ LOCAL_COMPOUNDS: Dict[str, Dict] = {
 
 
 def _search_local(name: str) -> Optional[Dict]:
+    """Exact name or exact alias only. No substring matching (that caused nitrobenzene -> benzene)."""
     clean = name.lower().strip()
 
     if clean in LOCAL_COMPOUNDS:
         print(f"Local: Found '{clean}'")
         return LOCAL_COMPOUNDS[clean].copy()
 
-    for key, value in LOCAL_COMPOUNDS.items():
-        if clean in key or key in clean:
-            print(f"Local: Partial match '{key}' for '{clean}'")
-            return value.copy()
+    for alias in NAME_ALIASES.get(clean, []):
+        hit = LOCAL_COMPOUNDS.get(alias.lower())
+        if hit:
+            print(f"Local: Alias '{clean}' -> '{alias}'")
+            return hit.copy()
 
     return None
 
@@ -490,42 +513,45 @@ def _names_to_try(name: str) -> List[str]:
     """Resolve a query to its alias list, always including the raw name first."""
     if name in NAME_ALIASES:
         aliases = NAME_ALIASES[name]
-        # keep the original query first if it isn't already
         return [name] + [a for a in aliases if a != name]
     return [name]
 
 
 # ============================================================
-# PROVIDER 1: CACTUS NIH (FASTEST, MOST RELIABLE)
+# PROVIDER: CACTUS NIH
 # ============================================================
 
 async def _search_cactus(name: str) -> Optional[Dict]:
     print(f"CACTUS: Searching '{name}'")
 
     for search_name in _names_to_try(name):
-        print(f"CACTUS: Trying '{search_name}'...")
+        enc = quote(search_name, safe="")
 
-        smiles_url = f"{CACTUS_BASE}/{quote(search_name)}/smiles"
-        status, body = await _get_text(smiles_url, provider="cactus")
+        status, body = await _get_text(f"{CACTUS_BASE}/{enc}/smiles", provider="cactus")
 
-        if status != 200 or not body or body.strip() == "404" or "not found" in body.lower():
-            print(f"CACTUS: No result for '{search_name}'")
+        if status != 200 or not body or "<html" in body.lower() or "not found" in body.lower():
             continue
 
         smiles = body.strip()
         if not smiles or smiles == "404":
             continue
 
-        status, mw_body = await _get_text(f"{CACTUS_BASE}/{quote(search_name)}/mw", provider="cactus")
-        mw = float(mw_body.strip()) if status == 200 and mw_body else 0
+        status, formula_body = await _get_text(f"{CACTUS_BASE}/{enc}/formula", provider="cactus")
+        formula = formula_body.strip() if status == 200 and formula_body and "<html" not in formula_body.lower() else "Not available"
 
-        status, iupac_body = await _get_text(f"{CACTUS_BASE}/{quote(search_name)}/iupac_name", provider="cactus")
-        iupac = iupac_body.strip() if status == 200 and iupac_body else search_name
+        status, mw_body = await _get_text(f"{CACTUS_BASE}/{enc}/mw", provider="cactus")
+        try:
+            mw = float(mw_body.strip()) if status == 200 and mw_body else 0
+        except ValueError:
+            mw = 0
 
-        result = {
+        status, iupac_body = await _get_text(f"{CACTUS_BASE}/{enc}/iupac_name", provider="cactus")
+        iupac = iupac_body.strip() if status == 200 and iupac_body and "<html" not in iupac_body.lower() else search_name
+
+        return {
             "cid": 0,
             "title": search_name.title(),
-            "molecularFormula": "Not available",
+            "molecularFormula": formula,
             "molecularWeight": mw,
             "iupacName": iupac,
             "smiles": smiles,
@@ -535,26 +561,17 @@ async def _search_cactus(name: str) -> Optional[Dict]:
             "_provider": "cactus",
         }
 
-        print(f"CACTUS: Found '{search_name}'")
-        return result
-
     return None
 
 
 # ============================================================
-# PROVIDER 2: WIKIPEDIA (FREE, NO API KEY)
+# PROVIDER: WIKIPEDIA
 # ============================================================
-# Rewritten to use the same urllib pipeline as everything else instead of
-# `requests` — this removes an extra dependency and the class of bug where
-# `requests` silently isn't the name bound in this module's namespace
-# (stale reload / venv mismatch / shadowing package).
 
 async def _search_wikipedia(name: str) -> Optional[Dict]:
     print(f"Wikipedia: Searching '{name}'")
 
     for search_name in _names_to_try(name):
-        print(f"Wikipedia: Trying '{search_name}'...")
-
         params = {
             "action": "query",
             "prop": "revisions",
@@ -566,11 +583,10 @@ async def _search_wikipedia(name: str) -> Optional[Dict]:
         query_string = "&".join(f"{k}={quote(str(v))}" for k, v in params.items())
         url = f"{WIKIPEDIA_API}?{query_string}"
 
-        headers = {"User-Agent": "ChemLab-Kenya/1.0 (contact: admin@example.com)"}
+        headers = {"User-Agent": "ChemLab-Kenya/1.0 (contact: your-real-email@chemlab.co.ke)"}
         data = await _get_json(url, headers=headers, provider="wikipedia")
 
         if not data:
-            print(f"Wikipedia: No response for '{search_name}'")
             continue
 
         pages = data.get("query", {}).get("pages", {})
@@ -579,18 +595,15 @@ async def _search_wikipedia(name: str) -> Optional[Dict]:
 
         page_id = list(pages.keys())[0]
         if page_id == "-1":
-            print(f"Wikipedia: '{search_name}' not found")
             continue
 
         revisions = pages[page_id].get("revisions", [{}])
         wikitext = revisions[0].get("*", "") if revisions else ""
         if not wikitext:
-            print(f"Wikipedia: No content for '{search_name}'")
             continue
 
         smiles_match = re.search(r"\|\s*SMILES\s*=\s*([^\n\|}]+)", wikitext, re.IGNORECASE)
         if not smiles_match:
-            print(f"Wikipedia: No SMILES found for '{search_name}'")
             continue
 
         raw_smiles = smiles_match.group(1).strip()
@@ -600,20 +613,16 @@ async def _search_wikipedia(name: str) -> Optional[Dict]:
         clean_smiles = re.sub(r"<!--.*?-->", "", clean_smiles)
         clean_smiles = clean_smiles.split("<br")[0].strip()
 
-        print(f"Wikipedia extracted: {clean_smiles}")
-
         try:
             from rdkit import Chem
             mol = Chem.MolFromSmiles(clean_smiles)
         except ImportError:
+            Chem = None
             mol = None
-            print("Wikipedia: RDKit not available, skipping SMILES validation")
 
         if mol is not None:
             canonical_smiles = Chem.MolToSmiles(mol)
         elif clean_smiles:
-            # RDKit unavailable or failed to parse - still return raw SMILES
-            # rather than discarding a real hit, but flag it as unvalidated.
             canonical_smiles = clean_smiles
         else:
             continue
@@ -623,7 +632,6 @@ async def _search_wikipedia(name: str) -> Optional[Dict]:
         formula_match = re.search(r"\|\s*formula\s*=\s*([^\n\|}]+)", wikitext, re.IGNORECASE)
         formula = formula_match.group(1).strip() if formula_match else "Not available"
 
-        print(f"Wikipedia: Found '{search_name}'")
         return {
             "cid": 0,
             "title": title,
@@ -641,16 +649,14 @@ async def _search_wikipedia(name: str) -> Optional[Dict]:
 
 
 # ============================================================
-# PROVIDER 3: PUBCHEM
+# PROVIDER: PUBCHEM
 # ============================================================
 
 async def _search_pubchem(name: str) -> Optional[Dict]:
     print(f"PubChem: Searching '{name}'")
 
     for search_name in _names_to_try(name):
-        print(f"PubChem: Trying '{search_name}'...")
-
-        cid_url = f"{PUBCHEM_BASE}/compound/name/{quote(search_name)}/cids/JSON"
+        cid_url = f"{PUBCHEM_BASE}/compound/name/{quote(search_name, safe='')}/cids/JSON"
         cid_data = await _get_json(cid_url, provider="pubchem")
 
         if cid_data is None:
@@ -658,67 +664,56 @@ async def _search_pubchem(name: str) -> Optional[Dict]:
 
         cids = cid_data.get("IdentifierList", {}).get("CID", [])
         if not cids:
-            print(f"PubChem: No CID for '{search_name}'")
             continue
 
         limited_cids = cids[:10]
         cid_list = ",".join(str(cid) for cid in limited_cids)
 
         properties = ",".join([
-            "Title", "MolecularFormula", "MolecularWeight",
-            "IUPACName", "CanonicalSMILES", "IsomericSMILES",
+            "Title", "MolecularFormula", "MolecularWeight", "IUPACName",
+            "SMILES", "ConnectivitySMILES", "CanonicalSMILES", "IsomericSMILES",
         ])
 
-        prop_url = f"{PUBCHEM_BASE}/compound/cid/{cid_list}/property/{properties}/JSON"
-        prop_data = await _get_json(prop_url, provider="pubchem")
+        prop_data = await _get_json(
+            f"{PUBCHEM_BASE}/compound/cid/{cid_list}/property/{properties}/JSON",
+            provider="pubchem",
+        )
 
-        if prop_data is None:
+        if not prop_data:
             continue
 
         props = prop_data.get("PropertyTable", {}).get("Properties", [])
-        if not props:
+        by_cid = {item.get("CID"): item for item in props}
+        ordered = [by_cid[c] for c in limited_cids if c in by_cid]
+        if not ordered:
             continue
 
-        best_match, best_score = None, -1
-        for item in props:
-            title = item.get("Title", "").lower()
-            search_lower = search_name.lower()
-
-            score = 0
-            if title == search_lower:
-                score = 100
-            elif search_lower in title:
-                score = 50
-            elif title in search_lower:
-                score = 30
-
-            if score > best_score:
-                best_score, best_match = score, item
-
-        item = best_match if best_match and best_score > 0 else props[0]
+        # PubChem returns CIDs in relevance order: trust it, prefer an exact title match
+        item = next(
+            (i for i in ordered if (i.get("Title") or "").lower() == search_name.lower()),
+            ordered[0],
+        )
         cid = item.get("CID")
 
-        result = {
+        return {
             "cid": int(cid),
             "title": item.get("Title", search_name),
             "molecularFormula": item.get("MolecularFormula", "Not available"),
             "molecularWeight": float(item.get("MolecularWeight", 0) or 0),
             "iupacName": item.get("IUPACName", "Not available"),
-            "smiles": item.get("IsomericSMILES") or item.get("CanonicalSMILES") or "",
+            "smiles": (item.get("SMILES") or item.get("IsomericSMILES")
+                       or item.get("ConnectivitySMILES") or item.get("CanonicalSMILES") or ""),
             "inchi": "",
             "source": "PubChem",
             "sourceId": str(cid),
             "_provider": "pubchem",
         }
 
-        print(f"PubChem: Found '{result['title']}' (score: {best_score})")
-        return result
-
     return None
 
 
 # ============================================================
-# PROVIDER 4: ChEMBL
+# PROVIDER: ChEMBL
 # ============================================================
 
 async def _search_chembl(name: str) -> Optional[Dict]:
@@ -728,91 +723,68 @@ async def _search_chembl(name: str) -> Optional[Dict]:
         url = f"{CHEMBL_BASE}/molecule/search.json?q={quote(search_name)}"
         data = await _get_json(url, provider="chembl")
 
-        if data is None:
+        if not data:
             continue
 
-        molecules = data.get("molecules", [])
-        if not molecules:
-            print(f"ChEMBL: No result for '{search_name}'")
-            continue
+        search_lower = search_name.lower()
 
-        best_match, best_score = None, -1
-        for mol in molecules:
-            title = (mol.get("pref_name") or mol.get("molecule_name") or "").lower()
-            search_lower = search_name.lower()
+        for mol in data.get("molecules", []):
+            names = {(mol.get("pref_name") or "").lower()}
+            names |= {(s.get("molecule_synonym") or "").lower() for s in (mol.get("molecule_synonyms") or [])}
+            if search_lower not in names:  # exact only: ChEMBL search is fuzzy
+                continue
 
-            score = 0
-            if title == search_lower:
-                score = 100
-            elif search_lower in title:
-                score = 50
-            elif title in search_lower:
-                score = 30
+            structures = mol.get("molecule_structures") or {}
+            props = mol.get("molecule_properties") or {}
+            if not structures.get("canonical_smiles"):
+                continue
 
-            if score > best_score:
-                best_score, best_match = score, mol
-
-        mol = best_match or molecules[0]
-        structures = mol.get("molecule_structures") or {}
-        props = mol.get("molecule_properties") or {}
-
-        result = {
-            "cid": 0,
-            "title": mol.get("pref_name") or mol.get("molecule_name") or search_name,
-            "molecularFormula": props.get("full_formula") or mol.get("molecule_formula") or "Not available",
-            "molecularWeight": float(props.get("full_mwt") or props.get("mw_freebase") or 0),
-            "iupacName": mol.get("pref_name") or "Not available",
-            "smiles": structures.get("canonical_smiles") or "",
-            "inchi": structures.get("standard_inchi") or "",
-            "source": "ChEMBL",
-            "sourceId": mol.get("molecule_chembl_id", ""),
-            "_provider": "chembl",
-        }
-
-        print(f"ChEMBL: Found '{result['title']}'")
-        return result
+            return {
+                "cid": 0,
+                "title": mol.get("pref_name") or search_name,
+                "molecularFormula": props.get("full_molformula") or "Not available",
+                "molecularWeight": float(props.get("full_mwt") or props.get("mw_freebase") or 0),
+                "iupacName": mol.get("pref_name") or "Not available",
+                "smiles": structures.get("canonical_smiles") or "",
+                "inchi": structures.get("standard_inchi") or "",
+                "source": "ChEMBL",
+                "sourceId": mol.get("molecule_chembl_id", ""),
+                "_provider": "chembl",
+            }
 
     return None
 
 
 # ============================================================
-# PROVIDER 5: ChemSpider (RSC API)
+# PROVIDER: ChemSpider (RSC API)
 # ============================================================
 
 async def _search_chemspider(name: str) -> Optional[Dict]:
     if not RSC_API_KEY:
-        print("ChemSpider: RSC_API_KEY not set. Skipping.")
         return None
 
-    print(f"ChemSpider: Searching '{name}'")
-
-    # RSC's API expects the key as a header, not a query param - a key in
-    # the URL with no matching header is what produced the 403s.
     headers = {"Accept": "application/json", "apikey": RSC_API_KEY}
 
     for search_name in _names_to_try(name):
-        search_url = f"{RSC_API_BASE}/search?q={quote(search_name)}"
-        data = await _get_json(search_url, headers=headers, provider="chemspider")
+        data = await _get_json(f"{RSC_API_BASE}/search?q={quote(search_name)}", headers=headers, provider="chemspider")
 
-        if data is None:
+        if not data:
             continue
 
         results = data.get("results", [])
         if not results:
-            print(f"ChemSpider: No result for '{search_name}'")
             continue
 
         compound_id = results[0].get("id")
         if not compound_id:
             continue
 
-        detail_url = f"{RSC_API_BASE}/compounds/{compound_id}"
-        detail_data = await _get_json(detail_url, headers=headers, provider="chemspider")
+        detail_data = await _get_json(f"{RSC_API_BASE}/compounds/{compound_id}", headers=headers, provider="chemspider")
 
-        if detail_data is None:
+        if not detail_data:
             continue
 
-        result = {
+        return {
             "cid": int(compound_id) if str(compound_id).isdigit() else 0,
             "title": detail_data.get("name") or search_name,
             "molecularFormula": detail_data.get("formula") or "Not available",
@@ -825,68 +797,23 @@ async def _search_chemspider(name: str) -> Optional[Dict]:
             "_provider": "chemspider",
         }
 
-        print(f"ChemSpider: Found '{result['title']}'")
-        return result
-
     return None
 
 
 # ============================================================
-# CIRCUIT BREAKER
+# LEGACY NAME SEARCH (still used by /api/compound/name)
 # ============================================================
 
-_provider_failures: Dict[str, int] = {}
-_provider_disabled_until: Dict[str, float] = {}
-CIRCUIT_FAILURE_THRESHOLD = 3
-CIRCUIT_COOLDOWN_SECONDS = 60
-
-
-def _is_provider_available(provider: str) -> bool:
-    if provider not in _provider_disabled_until:
-        return True
-    return time.time() > _provider_disabled_until[provider]
-
-
-def _record_failure(provider: str):
-    _provider_failures[provider] = _provider_failures.get(provider, 0) + 1
-    if _provider_failures[provider] >= CIRCUIT_FAILURE_THRESHOLD:
-        _provider_disabled_until[provider] = time.time() + CIRCUIT_COOLDOWN_SECONDS
-        print(f"Circuit opened for {provider} ({CIRCUIT_COOLDOWN_SECONDS}s cooldown)")
-
-
-def _record_success(provider: str):
-    _provider_failures[provider] = 0
-    _provider_disabled_until.pop(provider, None)
-
-
-# ============================================================
-# MAIN SEARCH FUNCTION
-# ============================================================
-
-# Ordered fastest/most-reliable first. CACTUS and Wikipedia don't need an
-# API key and historically respond fastest, so they go before PubChem/ChEMBL
-# (which can hang for many seconds when NCBI/EBI are under load) and
-# ChemSpider (requires a working API key).
 PROVIDERS = [
-    ("cactus", _search_cactus),
-    ("wikipedia", _search_wikipedia),
     ("pubchem", _search_pubchem),
+    ("cactus", _search_cactus),
     ("chembl", _search_chembl),
     ("chemspider", _search_chemspider),
+    ("wikipedia", _search_wikipedia),
 ]
 
 
 async def search_compound_by_name(name: str) -> Optional[Dict]:
-    """
-    Search for a compound by name using, in order:
-    1. Cache
-    2. Local database
-    3. CACTUS
-    4. Wikipedia
-    5. PubChem
-    6. ChEMBL
-    7. ChemSpider (only if RSC_API_KEY is set)
-    """
     clean_name = name.strip().lower()
 
     if not clean_name:
@@ -896,20 +823,16 @@ async def search_compound_by_name(name: str) -> Optional[Dict]:
 
     cached = _cache_get(clean_name)
     if cached:
-        print(f"Cache hit: '{clean_name}'")
         cached["_cache_hit"] = True
         return cached
 
     local = _search_local(clean_name)
     if local:
-        print(f"Local match: '{clean_name}'")
         _cache_set(clean_name, local)
         local["_cache_hit"] = True
         return local
 
     for provider_name, search_func in PROVIDERS:
-        print(f"Trying {provider_name.upper()}...")
-
         if not _is_provider_available(provider_name):
             print(f"{provider_name}: Circuit open, skipping")
             continue
@@ -917,13 +840,9 @@ async def search_compound_by_name(name: str) -> Optional[Dict]:
         try:
             result = await search_func(clean_name)
             if result:
-                print(f"{provider_name.upper()} found: '{result.get('title', 'Unknown')}'")
                 _record_success(provider_name)
                 _cache_set(clean_name, result)
                 return result
-            else:
-                print(f"{provider_name.upper()} returned no result")
-                _record_failure(provider_name)
         except Exception as e:
             print(f"{provider_name} error: {e}")
             _record_failure(provider_name)
@@ -943,41 +862,50 @@ async def search_by_formula(formula: str) -> Optional[List[Dict]]:
     clean_formula = formula.strip()
 
     if clean_formula in _formula_cache:
-        print(f"Formula cache hit: {clean_formula}")
         return _formula_cache[clean_formula]
 
     cached = _cache_get(f"formula_{clean_formula}")
     if cached:
-        print(f"Formula file cache hit: {clean_formula}")
         _formula_cache[clean_formula] = cached
         return cached
 
-    cid_url = f"{PUBCHEM_BASE}/compound/fastformula/{quote(clean_formula)}/cids/JSON"
-    cid_data = await _get_json(cid_url, provider="pubchem")
-
+    cid_data = await _get_json(
+        f"{PUBCHEM_BASE}/compound/fastformula/{quote(clean_formula, safe='')}/cids/JSON?MaxRecords=20",
+        provider="pubchem",
+    )
     if cid_data is None:
         return None
 
-    cids = cid_data.get("IdentifierList", {}).get("CID", [])
+    key = (cid_data.get("Waiting") or {}).get("ListKey")
+    for _ in range(6):
+        if not key:
+            break
+        await asyncio.sleep(1)
+        cid_data = await _get_json(f"{PUBCHEM_BASE}/compound/listkey/{key}/cids/JSON", provider="pubchem")
+        if cid_data is None:
+            return None
+        if not cid_data or "IdentifierList" in cid_data:
+            break
+
+    cids = (cid_data.get("IdentifierList") or {}).get("CID", [])
     if not cids:
         _formula_cache[clean_formula] = []
         return []
 
-    limited_cids = cids[:20]
-    cid_list = ",".join(str(cid) for cid in limited_cids)
-
+    cid_list = ",".join(str(cid) for cid in cids[:20])
     properties = ",".join([
-        "Title", "MolecularFormula", "MolecularWeight",
-        "IUPACName", "CanonicalSMILES",
+        "Title", "MolecularFormula", "MolecularWeight", "IUPACName",
+        "SMILES", "ConnectivitySMILES", "CanonicalSMILES", "IsomericSMILES",
     ])
 
-    prop_url = f"{PUBCHEM_BASE}/compound/cid/{cid_list}/property/{properties}/JSON"
-    prop_data = await _get_json(prop_url, provider="pubchem")
-
+    prop_data = await _get_json(
+        f"{PUBCHEM_BASE}/compound/cid/{cid_list}/property/{properties}/JSON",
+        provider="pubchem",
+    )
     if prop_data is None:
         return None
 
-    props = prop_data.get("PropertyTable", {}).get("Properties", [])
+    props = (prop_data.get("PropertyTable") or {}).get("Properties", [])
 
     results = []
     for item in props:
@@ -987,7 +915,8 @@ async def search_by_formula(formula: str) -> Optional[List[Dict]]:
             "molecularFormula": item.get("MolecularFormula", clean_formula),
             "molecularWeight": float(item.get("MolecularWeight", 0) or 0),
             "iupacName": item.get("IUPACName", "Not available"),
-            "smiles": item.get("CanonicalSMILES", ""),
+            "smiles": (item.get("SMILES") or item.get("IsomericSMILES")
+                       or item.get("ConnectivitySMILES") or item.get("CanonicalSMILES") or ""),
             "inchi": "",
             "structureImage": "",
             "source": "PubChem",
@@ -996,8 +925,6 @@ async def search_by_formula(formula: str) -> Optional[List[Dict]]:
 
     _formula_cache[clean_formula] = results
     _cache_set(f"formula_{clean_formula}", results)
-
-    print(f"PubChem: {len(results)} candidates for {clean_formula}")
     return results
 
 
