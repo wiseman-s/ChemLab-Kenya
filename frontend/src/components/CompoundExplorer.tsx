@@ -1,121 +1,151 @@
 // src/components/CompoundExplorer.tsx
-
-import React, { useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   calculateElementComposition,
   type ElementComposition,
 } from '../utils/formulaComposition';
-import { API_URL } from '../config';
+import {
+  searchCompounds,
+  fetchExtras,
+  structureImageUrl,
+  pubchemPageUrl,
+  SearchError,
+  type Compound,
+  type CompoundExtras,
+  type SearchMode,
+} from '../utils/pubchem';
 
-// Backend API URL — uses relative path in production so Vercel proxies
-// requests to Render. The browser only ever sees chemlab.co.ke.
-const API_BASE = API_URL ? `${API_URL}/api` : '/api';
+const MODES: { value: SearchMode; label: string; placeholder: string }[] = [
+  { value: 'auto', label: 'Auto-detect', placeholder: 'e.g. nitrobenzene, C6H5NO2, 50-00-0, aspirin...' },
+  { value: 'name', label: 'Name / CAS', placeholder: 'e.g. nitrobenzene, acetic acid, 98-95-3' },
+  { value: 'formula', label: 'Formula', placeholder: 'e.g. C6H5NO2 (case-sensitive)' },
+  { value: 'smiles', label: 'SMILES', placeholder: 'e.g. C1=CC=C(C=C1)[N+](=O)[O-]' },
+  { value: 'cid', label: 'PubChem CID', placeholder: 'e.g. 7416' },
+];
 
-async function searchCompoundBackend(name: string) {
-  const response = await fetch(
-    `${API_BASE}/compound/name?name=${encodeURIComponent(name)}`
-  );
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Search failed' }));
-    throw new Error(error.error || error.detail || 'Search failed');
-  }
-
-  const data = await response.json();
-
-  if (data.error) {
-    throw new Error(data.error);
-  }
-
-  return data;
-}
+const card: React.CSSProperties = { padding: '12px', background: 'white', borderRadius: '5px' };
 
 const CompoundExplorer: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [compound, setCompound] = useState<any>(null);
+  const [mode, setMode] = useState<SearchMode>('auto');
+  const [results, setResults] = useState<Compound[]>([]);
+  const [selected, setSelected] = useState<Compound | null>(null);
+  const [extras, setExtras] = useState<CompoundExtras | null>(null);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [composition, setComposition] = useState<ElementComposition[] | null>(null);
-
-  // Custom toast notification (replaces browser alert)
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const requestId = useRef(0);
 
   const showToast = (message: string) => {
     setToastMessage(message);
     window.setTimeout(() => setToastMessage(null), 3000);
   };
 
-  const handleSearch = async () => {
-    const query = searchTerm.trim();
+  const composition: ElementComposition[] | null = useMemo(() => {
+    if (!selected?.molecularFormula) return null;
+    try {
+      return calculateElementComposition(selected.molecularFormula);
+    } catch (e) {
+      console.warn('Could not calculate elemental composition:', e);
+      return null;
+    }
+  }, [selected]);
 
-    if (!query) {
-      setError('Enter a compound name to search.');
+  const selectCompound = (compound: Compound) => {
+    setSelected(compound);
+    setExtras(null);
+    const id = requestId.current;
+    fetchExtras(compound.cid)
+      .then((e) => {
+        if (id === requestId.current) setExtras(e);
+      })
+      .catch(() => {});
+  };
+
+  const runSearch = async (query: string, searchMode: SearchMode = mode) => {
+    const q = query.trim();
+    if (!q) {
+      setError('Enter something to search for.');
       return;
     }
 
+    const id = ++requestId.current;
     setLoading(true);
     setError('');
-    setCompound(null);
-    setComposition(null);
+    setSuggestions([]);
+    setResults([]);
+    setSelected(null);
+    setExtras(null);
 
     try {
-      const result = await searchCompoundBackend(query);
-      setCompound(result);
-
-      try {
-        const compositionResult = calculateElementComposition(
-          result.molecularFormula
-        );
-        setComposition(compositionResult);
-      } catch (compositionError) {
-        console.warn('Could not calculate elemental composition:', compositionError);
-        setComposition(null);
-      }
+      const found = await searchCompounds(q, searchMode);
+      if (id !== requestId.current) return;
+      setResults(found);
+      selectCompound(found[0]);
     } catch (err) {
-      if (err instanceof Error) {
+      if (id !== requestId.current) return;
+      if (err instanceof SearchError) {
         setError(err.message);
+        setSuggestions(err.suggestions);
       } else {
-        setError('Something went wrong while searching.');
+        setError('Something went wrong while searching. Check your connection and try again.');
       }
     } finally {
-      setLoading(false);
+      if (id === requestId.current) setLoading(false);
     }
   };
 
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Enter') {
-      handleSearch();
-    }
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') runSearch(searchTerm);
   };
 
-  // Copy SMILES to clipboard
-  const copySmiles = () => {
-    if (!compound || !compound.smiles) {
-      return;
-    }
-
-    const onCopied = () => {
-      showToast('SMILES copied! You can now paste it into the Molecular Analyzer.');
-    };
-
+  const copyText = (text: string, message: string) => {
+    if (!text) return;
+    const done = () => showToast(message);
     if (navigator.clipboard) {
-      navigator.clipboard.writeText(compound.smiles).then(onCopied).catch(() => {
-        fallbackCopy(compound.smiles, onCopied);
-      });
+      navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
     } else {
-      fallbackCopy(compound.smiles, onCopied);
+      fallbackCopy(text, done);
     }
   };
 
   const fallbackCopy = (text: string, onCopied: () => void) => {
-    const textArea = document.createElement('textarea');
-    textArea.value = text;
-    document.body.appendChild(textArea);
-    textArea.select();
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
     document.execCommand('copy');
-    document.body.removeChild(textArea);
+    document.body.removeChild(ta);
     onCopied();
   };
+
+  const currentMode = MODES.find((m) => m.value === mode)!;
+
+  const smallBtn: React.CSSProperties = {
+    padding: '6px 16px',
+    background: '#00897b',
+    color: 'white',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontSize: '13px',
+    fontWeight: 'bold',
+  };
+
+  const properties: { label: string; value: React.ReactNode }[] = selected
+    ? [
+        { label: 'Exact Mass', value: selected.exactMass ? `${selected.exactMass} Da` : '—' },
+        { label: 'XLogP', value: selected.xlogp ?? '—' },
+        { label: 'TPSA', value: selected.tpsa != null ? `${selected.tpsa} Å²` : '—' },
+        { label: 'H-Bond Donors', value: selected.hbd ?? '—' },
+        { label: 'H-Bond Acceptors', value: selected.hba ?? '—' },
+        { label: 'Rotatable Bonds', value: selected.rotatableBonds ?? '—' },
+        { label: 'Charge', value: selected.charge ?? '—' },
+        { label: 'Complexity', value: selected.complexity ?? '—' },
+      ]
+    : [];
 
   return (
     <div
@@ -128,22 +158,31 @@ const CompoundExplorer: React.FC = () => {
         position: 'relative',
       }}
     >
-      <h2 style={{ color: '#00695c', marginBottom: '8px' }}>
-        Compound Explorer
-      </h2>
-
+      <h2 style={{ color: '#00695c', marginBottom: '8px' }}>Compound Explorer</h2>
       <p style={{ color: '#666', marginTop: 0, marginBottom: '20px' }}>
-        Search for a compound by its common or chemical name. 
-        Copy the SMILES string and paste it into the Molecular Analyzer to view its 2D and 3D structure.
+        Search by name, CAS number, molecular formula, SMILES or PubChem CID. Copy the SMILES and
+        paste it into the Molecular Analyzer to view the 2D and 3D structure.
       </p>
 
+      {/* Search bar */}
       <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+        <select
+          value={mode}
+          onChange={(e) => setMode(e.target.value as SearchMode)}
+          disabled={loading}
+          style={{ padding: '12px', border: '2px solid #00897b', borderRadius: '5px', fontSize: '15px', background: 'white' }}
+        >
+          {MODES.map((m) => (
+            <option key={m.value} value={m.value}>{m.label}</option>
+          ))}
+        </select>
+
         <input
           type="text"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="e.g. water, aspirin, ethanol..."
+          placeholder={currentMode.placeholder}
           disabled={loading}
           style={{
             flex: 1,
@@ -157,7 +196,7 @@ const CompoundExplorer: React.FC = () => {
         />
 
         <button
-          onClick={handleSearch}
+          onClick={() => runSearch(searchTerm)}
           disabled={loading}
           style={{
             padding: '12px 20px',
@@ -174,161 +213,196 @@ const CompoundExplorer: React.FC = () => {
         </button>
       </div>
 
+      {/* Error + did-you-mean */}
       {error && (
-        <div
-          style={{
-            marginTop: '15px',
-            padding: '12px',
-            background: '#ffebee',
-            border: '1px solid #ef9a9a',
-            borderRadius: '5px',
-            color: '#c62828',
-          }}
-        >
+        <div style={{ marginTop: '15px', padding: '12px', background: '#ffebee', border: '1px solid #ef9a9a', borderRadius: '5px', color: '#c62828' }}>
           {error}
-        </div>
-      )}
-
-      {compound && (
-        <div
-          style={{
-            marginTop: '25px',
-            padding: '20px',
-            background: '#f5f5f5',
-            borderRadius: '8px',
-            border: '1px solid #e0e0e0',
-          }}
-        >
-          <h2 style={{ color: '#00695c', marginTop: 0, marginBottom: '10px' }}>
-            {compound.title}
-          </h2>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-            <div style={{ padding: '12px', background: 'white', borderRadius: '5px' }}>
-              <strong>Molecular Formula</strong>
-              <div style={{ fontSize: '18px', marginTop: '5px', fontFamily: 'monospace' }}>
-                {compound.molecularFormula}
-              </div>
-            </div>
-
-            <div style={{ padding: '12px', background: 'white', borderRadius: '5px' }}>
-              <strong>Molecular Weight</strong>
-              <div style={{ marginTop: '5px' }}>
-                {compound.molecularWeight ? `${compound.molecularWeight} g/mol` : 'Not available'}
-              </div>
-            </div>
-
-            <div style={{ padding: '12px', background: 'white', borderRadius: '5px', gridColumn: '1 / -1' }}>
-              <strong>IUPAC Name</strong>
-              <div style={{ marginTop: '5px', wordBreak: 'break-word' }}>
-                {compound.iupacName}
-              </div>
-            </div>
-
-            <div style={{ padding: '12px', background: 'white', borderRadius: '5px', gridColumn: '1 / -1' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
-                <strong>SMILES</strong>
+          {suggestions.length > 0 && (
+            <div style={{ marginTop: '8px', color: '#444' }}>
+              Did you mean:{' '}
+              {suggestions.map((s) => (
                 <button
-                  onClick={copySmiles}
-                  style={{
-                    padding: '6px 16px',
-                    background: '#00897b',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontSize: '13px',
-                    fontWeight: 'bold'
+                  key={s}
+                  onClick={() => {
+                    setSearchTerm(s);
+                    setMode('name');
+                    runSearch(s, 'name');
                   }}
+                  style={{ margin: '2px 6px 2px 0', padding: '3px 10px', borderRadius: '12px', border: '1px solid #00897b', background: 'white', color: '#00695c', cursor: 'pointer' }}
                 >
-                  Copy SMILES
+                  {s}
                 </button>
-              </div>
-              <div
-                style={{
-                  marginTop: '5px',
-                  fontFamily: 'monospace',
-                  fontSize: '14px',
-                  wordBreak: 'break-all',
-                  background: '#fafafa',
-                  padding: '8px',
-                  borderRadius: '4px',
-                  border: '1px solid #e0e0e0'
-                }}
-              >
-                {compound.smiles}
-              </div>
-              <div style={{ marginTop: '5px', fontSize: '12px', color: '#666' }}>
-                Copy this SMILES and paste it into the <strong>Molecular Analyzer</strong> tab to view the 2D and 3D structure.
-              </div>
-            </div>
-          </div>
-
-          {composition && composition.length > 0 && (
-            <div
-              style={{
-                marginTop: '15px',
-                padding: '15px',
-                background: '#eef7f6',
-                borderRadius: '6px',
-                border: '1px solid #b2dfdb',
-              }}
-            >
-              <strong
-                style={{
-                  display: 'block',
-                  marginBottom: '12px',
-                  color: '#00695c',
-                  fontSize: '17px',
-                }}
-              >
-                Element Composition
-              </strong>
-
-              <div style={{ display: 'grid', gap: '8px' }}>
-                {composition.map((element) => (
-                  <div
-                    key={element.symbol}
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 80px 100px',
-                      gap: '10px',
-                      alignItems: 'center',
-                      padding: '8px',
-                      background: 'white',
-                      borderRadius: '4px',
-                    }}
-                  >
-                    <div>
-                      <strong>{element.symbol}</strong>{' '}
-                      <span style={{ color: '#666' }}>{element.name}</span>
-                    </div>
-                    <div style={{ textAlign: 'center' }}>
-                      {element.count} atom{element.count !== 1 ? 's' : ''}
-                    </div>
-                    <div style={{ textAlign: 'right', fontWeight: 'bold' }}>
-                      {element.percentage.toFixed(2)}%
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <p
-                style={{
-                  marginTop: '12px',
-                  marginBottom: 0,
-                  fontSize: '13px',
-                  color: '#666',
-                }}
-              >
-                Percentages represent the contribution of each element to the compound's total molecular mass.
-              </p>
+              ))}
             </div>
           )}
         </div>
       )}
 
-      {/* Custom toast notification — replaces the native alert popup */}
+      {/* Multiple matches */}
+      {results.length > 1 && (
+        <div style={{ marginTop: '20px' }}>
+          <strong style={{ color: '#00695c' }}>{results.length} matches</strong>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '8px' }}>
+            {results.map((r) => {
+              const active = selected?.cid === r.cid;
+              return (
+                <button
+                  key={r.cid}
+                  onClick={() => selectCompound(r)}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    border: `2px solid ${active ? '#00695c' : '#b2dfdb'}`,
+                    background: active ? '#e0f2f1' : 'white',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  <div style={{ fontWeight: 'bold' }}>{r.title}</div>
+                  <div style={{ fontFamily: 'monospace', fontSize: '12px', color: '#666' }}>
+                    {r.molecularFormula} · CID {r.cid}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Selected compound */}
+      {selected && (
+        <div style={{ marginTop: '25px', padding: '20px', background: '#f5f5f5', borderRadius: '8px', border: '1px solid #e0e0e0' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: '8px' }}>
+            <h2 style={{ color: '#00695c', marginTop: 0, marginBottom: '10px', textTransform: 'capitalize' }}>
+              {selected.title}
+            </h2>
+            <a href={pubchemPageUrl(selected.cid)} target="_blank" rel="noopener noreferrer" style={{ color: '#00897b', fontSize: '14px' }}>
+              View on PubChem (CID {selected.cid}) ↗
+            </a>
+          </div>
+
+          {extras?.description && (
+            <p style={{ ...card, marginTop: 0, color: '#444', fontSize: '14px', lineHeight: 1.5 }}>
+              {extras.description}
+            </p>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '15px' }}>
+            <div style={{ ...card, display: 'flex', justifyContent: 'center', alignItems: 'center', gridColumn: '1 / -1' }}>
+              <img
+                src={structureImageUrl(selected.cid)}
+                alt={`2D structure of ${selected.title}`}
+                style={{ maxWidth: '100%', height: 'auto', maxHeight: '260px' }}
+              />
+            </div>
+
+            <div style={card}>
+              <strong>Molecular Formula</strong>
+              <div style={{ fontSize: '18px', marginTop: '5px', fontFamily: 'monospace' }}>
+                {selected.molecularFormula}
+              </div>
+            </div>
+
+            <div style={card}>
+              <strong>Molecular Weight</strong>
+              <div style={{ marginTop: '5px' }}>
+                {selected.molecularWeight ? `${selected.molecularWeight} g/mol` : 'Not available'}
+              </div>
+            </div>
+
+            <div style={{ ...card, gridColumn: '1 / -1' }}>
+              <strong>IUPAC Name</strong>
+              <div style={{ marginTop: '5px', wordBreak: 'break-word' }}>{selected.iupacName}</div>
+            </div>
+
+            <div style={{ ...card, gridColumn: '1 / -1' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
+                <strong>SMILES</strong>
+                <button
+                  onClick={() => copyText(selected.smiles, 'SMILES copied! You can now paste it into the Molecular Analyzer.')}
+                  style={smallBtn}
+                >
+                  Copy SMILES
+                </button>
+              </div>
+              <div style={{ marginTop: '5px', fontFamily: 'monospace', fontSize: '14px', wordBreak: 'break-all', background: '#fafafa', padding: '8px', borderRadius: '4px', border: '1px solid #e0e0e0' }}>
+                {selected.smiles}
+              </div>
+            </div>
+
+            {selected.inchiKey && (
+              <div style={{ ...card, gridColumn: '1 / -1' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <strong>InChIKey</strong>
+                  <button onClick={() => copyText(selected.inchiKey, 'InChIKey copied!')} style={smallBtn}>
+                    Copy
+                  </button>
+                </div>
+                <div style={{ marginTop: '5px', fontFamily: 'monospace', fontSize: '13px', wordBreak: 'break-all' }}>
+                  {selected.inchiKey}
+                </div>
+              </div>
+            )}
+
+            <div style={{ ...card, gridColumn: '1 / -1' }}>
+              <strong>Computed Properties</strong>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px', marginTop: '10px' }}>
+                {properties.map((p) => (
+                  <div key={p.label} style={{ background: '#fafafa', padding: '8px', borderRadius: '4px', border: '1px solid #eee' }}>
+                    <div style={{ fontSize: '12px', color: '#666' }}>{p.label}</div>
+                    <div style={{ fontWeight: 'bold' }}>{p.value}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {extras && extras.synonyms.length > 0 && (
+              <div style={{ ...card, gridColumn: '1 / -1' }}>
+                <strong>Also known as</strong>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
+                  {extras.synonyms.map((s) => (
+                    <span key={s} style={{ padding: '3px 10px', background: '#e0f2f1', borderRadius: '12px', fontSize: '13px', color: '#00695c' }}>
+                      {s}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {composition && composition.length > 0 && (
+            <div style={{ marginTop: '15px', padding: '15px', background: '#eef7f6', borderRadius: '6px', border: '1px solid #b2dfdb' }}>
+              <strong style={{ display: 'block', marginBottom: '12px', color: '#00695c', fontSize: '17px' }}>
+                Element Composition
+              </strong>
+              <div style={{ display: 'grid', gap: '8px' }}>
+                {composition.map((el) => (
+                  <div
+                    key={el.symbol}
+                    style={{ display: 'grid', gridTemplateColumns: '1fr 80px 100px', gap: '10px', alignItems: 'center', padding: '8px', background: 'white', borderRadius: '4px' }}
+                  >
+                    <div>
+                      <strong>{el.symbol}</strong> <span style={{ color: '#666' }}>{el.name}</span>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      {el.count} atom{el.count !== 1 ? 's' : ''}
+                    </div>
+                    <div style={{ textAlign: 'right', fontWeight: 'bold' }}>{el.percentage.toFixed(2)}%</div>
+                  </div>
+                ))}
+              </div>
+              <p style={{ marginTop: '12px', marginBottom: 0, fontSize: '13px', color: '#666' }}>
+                Percentages represent the contribution of each element to the compound's total molecular mass.
+              </p>
+            </div>
+          )}
+
+          <p style={{ marginTop: '15px', marginBottom: 0, fontSize: '12px', color: '#888' }}>
+            Data from PubChem (NCBI).
+          </p>
+        </div>
+      )}
+
       {toastMessage && (
         <div
           style={{
@@ -340,7 +414,7 @@ const CompoundExplorer: React.FC = () => {
             color: 'white',
             padding: '12px 20px',
             borderRadius: '6px',
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
             fontSize: '14px',
             fontWeight: 500,
             zIndex: 1000,
