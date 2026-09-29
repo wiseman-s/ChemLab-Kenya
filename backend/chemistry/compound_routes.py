@@ -10,12 +10,23 @@ router = APIRouter(prefix="/api/compound")
 @router.get("/search")
 async def compound_search(q: str, mode: str = "auto"):
     try:
-        return await explore(q, mode)
+        result = await explore(q, mode)
+        return result
     except NotFound as e:
-        return JSONResponse(status_code=404, content={"error": str(e), "suggestions": e.suggestions})
+        return JSONResponse(
+            status_code=404,
+            content={"error": str(e), "suggestions": getattr(e, "suggestions", [])},
+        )
     except Unavailable:
-        return JSONResponse(status_code=503, content={
-            "error": "Compound databases are busy right now. Please try again in a minute."})
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": (
+                    "Compound databases are busy right now. "
+                    "Please try again in a minute — or paste a SMILES string directly into the editor."
+                )
+            },
+        )
 
 
 @router.get("/structure")
