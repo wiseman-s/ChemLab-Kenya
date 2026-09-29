@@ -8,7 +8,6 @@ import {
   searchCompounds,
   fetchExtras,
   structureImageUrl,
-  pubchemPageUrl,
   SearchError,
   type Compound,
   type CompoundExtras,
@@ -276,9 +275,6 @@ const CompoundExplorer: React.FC = () => {
             <h2 style={{ color: '#00695c', marginTop: 0, marginBottom: '10px', textTransform: 'capitalize' }}>
               {selected.title}
             </h2>
-            <a href={pubchemPageUrl(selected.cid)} target="_blank" rel="noopener noreferrer" style={{ color: '#00897b', fontSize: '14px' }}>
-              View on PubChem (CID {selected.cid}) ↗
-            </a>
           </div>
 
           {extras?.description && (
@@ -396,10 +392,6 @@ const CompoundExplorer: React.FC = () => {
               </p>
             </div>
           )}
-
-          <p style={{ marginTop: '15px', marginBottom: 0, fontSize: '12px', color: '#888' }}>
-            Data from PubChem (NCBI).
-          </p>
         </div>
       )}
 
