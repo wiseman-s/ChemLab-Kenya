@@ -4,16 +4,20 @@ import json
 import requests
 from typing import List, Dict, Any
 
-# OpenRouter configuration
+# ============================================================
+# PROVIDER CONFIGURATION
+# ============================================================
+
+# Groq (primary — fast + generous free tier)
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+
+# OpenRouter (fallback — used if Groq fails or is rate-limited)
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-
-# "openrouter/free" is OpenRouter's own auto-router that picks a free model.
-# For more predictable behavior, you can pin a specific free model instead, e.g.:
-# OPENROUTER_MODEL = "meta-llama/llama-3.1-8b-instruct:free"
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/free")
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-# Correct chat completions endpoint (the bare domain is not a valid API URL)
-API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 SYSTEM_PROMPT = """You are ChemLab Bot – a friendly chemistry assistant for students in Kenya, replying inside a small chat widget.
 
@@ -57,59 +61,42 @@ def get_conversation(session_id: str) -> List[Dict[str, str]]:
     return conversations[session_id]
 
 
-# Keep this name matching what main.py imports: chat_with_deepseek
-def chat_with_deepseek(
-    message: str,
-    session_id: str = "default",
-    history_limit: int = 10
-) -> Dict[str, Any]:
-    if not OPENROUTER_API_KEY:
-        return {
-            "success": False,
-            "error": "OPENROUTER_API_KEY environment variable is not set.",
-            "conversation_id": session_id
-        }
+# ============================================================
+# PROVIDER CALLS
+# ============================================================
+
+def _call_groq(messages: List[Dict[str, str]]) -> tuple[bool, str, str]:
+    """
+    Call Groq. Returns (success, response_text_or_error, provider_name).
+    """
+    if not GROQ_API_KEY:
+        return False, "GROQ_API_KEY not set", "groq"
+
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "model": GROQ_MODEL,
+        "messages": messages,
+        "max_tokens": 900,
+        "temperature": 0.7,
+    }
 
     try:
-        history = get_conversation(session_id)
+        response = requests.post(GROQ_API_URL, headers=headers, json=payload, timeout=30)
 
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-        messages.extend(history[-history_limit:])
-        messages.append({"role": "user", "content": message})
-
-        headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://chemlab-kenya.onrender.com",
-            "X-Title": "ChemLab Kenya"
-        }
-
-        payload = {
-            "model": OPENROUTER_MODEL,
-            "messages": messages,
-            "max_tokens": 900,
-            "temperature": 0.7,
-        }
-
-        response = requests.post(API_URL, headers=headers, json=payload, timeout=30)
-
-        # Transient/provider-side issues (rate limits, no available endpoint, etc.)
-        # get one silent retry before we give up and show a friendly message.
+        # Transient — retry once
         if response.status_code in (404, 429, 500, 502, 503):
-            print(f"⚠️ OpenRouter transient error {response.status_code}, retrying once: {response.text[:200]}", flush=True)
-            response = requests.post(API_URL, headers=headers, json=payload, timeout=30)
+            print(f"⚠️ Groq transient error {response.status_code}, retrying once: {response.text[:200]}", flush=True)
+            response = requests.post(GROQ_API_URL, headers=headers, json=payload, timeout=30)
 
         if response.status_code != 200:
-            print(f"❌ OpenRouter API error {response.status_code}: {response.text[:300]}", flush=True)
-            return {
-                "success": False,
-                "error": "I'm having trouble connecting right now. Please try again in a moment! 🧪",
-                "conversation_id": session_id
-            }
+            print(f"❌ Groq API error {response.status_code}: {response.text[:300]}", flush=True)
+            return False, f"Groq returned {response.status_code}", "groq"
 
         data = response.json()
-        print(f"🔎 OpenRouter raw response: {json.dumps(data)[:1500]}", flush=True)
-
         assistant_message = (
             data.get("choices", [{}])[0]
             .get("message", {})
@@ -118,35 +105,123 @@ def chat_with_deepseek(
         )
 
         if not assistant_message:
-            assistant_message = "I couldn't generate a response. Please try again."
+            return False, "Groq returned empty response", "groq"
 
-        history.append({"role": "user", "content": message})
-        history.append({"role": "assistant", "content": assistant_message})
-
-        if len(history) > 50:
-            conversations[session_id] = history[-50:]
-
-        return {
-            "success": True,
-            "response": assistant_message,
-            "conversation_id": session_id,
-            "provider": "openrouter"
-        }
+        return True, assistant_message, "groq"
 
     except requests.exceptions.ConnectionError as e:
-        print(f"❌ Network error: {e}", flush=True)
+        print(f"❌ Groq network error: {e}", flush=True)
+        return False, f"Groq network error: {e}", "groq"
+    except Exception as e:
+        print(f"❌ Groq unexpected error: {e}", flush=True)
+        return False, f"Groq error: {e}", "groq"
+
+
+def _call_openrouter(messages: List[Dict[str, str]]) -> tuple[bool, str, str]:
+    """
+    Call OpenRouter as fallback. Returns (success, response_text_or_error, provider_name).
+    """
+    if not OPENROUTER_API_KEY:
+        return False, "OPENROUTER_API_KEY not set", "openrouter"
+
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://chemlab-kenya.onrender.com",
+        "X-Title": "ChemLab Kenya",
+    }
+
+    payload = {
+        "model": OPENROUTER_MODEL,
+        "messages": messages,
+        "max_tokens": 900,
+        "temperature": 0.7,
+    }
+
+    try:
+        response = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=30)
+
+        if response.status_code in (404, 429, 500, 502, 503):
+            print(f"⚠️ OpenRouter transient error {response.status_code}, retrying once: {response.text[:200]}", flush=True)
+            response = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=30)
+
+        if response.status_code != 200:
+            print(f"❌ OpenRouter API error {response.status_code}: {response.text[:300]}", flush=True)
+            return False, f"OpenRouter returned {response.status_code}", "openrouter"
+
+        data = response.json()
+        assistant_message = (
+            data.get("choices", [{}])[0]
+            .get("message", {})
+            .get("content", "")
+            .strip()
+        )
+
+        if not assistant_message:
+            return False, "OpenRouter returned empty response", "openrouter"
+
+        return True, assistant_message, "openrouter"
+
+    except requests.exceptions.ConnectionError as e:
+        print(f"❌ OpenRouter network error: {e}", flush=True)
+        return False, f"OpenRouter network error: {e}", "openrouter"
+    except Exception as e:
+        print(f"❌ OpenRouter unexpected error: {e}", flush=True)
+        return False, f"OpenRouter error: {e}", "openrouter"
+
+
+# ============================================================
+# MAIN ENTRY POINT (name unchanged so main.py import still works)
+# ============================================================
+
+def chat_with_deepseek(
+    message: str,
+    session_id: str = "default",
+    history_limit: int = 10
+) -> Dict[str, Any]:
+    """
+    Send a message to the chatbot.
+    Tries Groq first (primary), falls back to OpenRouter if Groq fails.
+    """
+    history = get_conversation(session_id)
+
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages.extend(history[-history_limit:])
+    messages.append({"role": "user", "content": message})
+
+    # ---- Attempt 1: Groq (primary) ----
+    success, result, provider = _call_groq(messages)
+
+    # ---- Attempt 2: OpenRouter (fallback) ----
+    if not success:
+        print(f"↪️ Groq failed ({result}), falling back to OpenRouter", flush=True)
+        success, result, provider = _call_openrouter(messages)
+
+    # ---- Both failed ----
+    if not success:
+        print(f"❌ All providers failed. Last error: {result}", flush=True)
         return {
             "success": False,
             "error": "I'm having trouble connecting right now. Please try again in a moment! 🧪",
-            "conversation_id": session_id
+            "conversation_id": session_id,
         }
-    except Exception as e:
-        print(f"❌ Unexpected error: {e}", flush=True)
-        return {
-            "success": False,
-            "error": "Something went wrong on my end. Please try again! 🧪",
-            "conversation_id": session_id
-        }
+
+    # ---- Success: update history ----
+    assistant_message = result
+    history.append({"role": "user", "content": message})
+    history.append({"role": "assistant", "content": assistant_message})
+
+    if len(history) > 50:
+        conversations[session_id] = history[-50:]
+
+    print(f"✅ Response from {provider}", flush=True)
+
+    return {
+        "success": True,
+        "response": assistant_message,
+        "conversation_id": session_id,
+        "provider": provider,
+    }
 
 
 def clear_conversation(session_id: str) -> Dict[str, Any]:
@@ -162,6 +237,6 @@ def get_conversation_summary(session_id: str) -> Dict[str, Any]:
         return {
             "success": True,
             "message_count": len(history),
-            "messages": history
+            "messages": history,
         }
     return {"success": False, "error": "Session not found"}
