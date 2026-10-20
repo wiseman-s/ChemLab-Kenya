@@ -26,27 +26,47 @@ from chemistry.rdkit_renderer import smiles_to_svg
 # Import chatbot module
 from chat import chat_with_deepseek, clear_conversation, get_conversation_summary
 
+# ============================================================
+# AUTH IMPORTS (NEW)
+# ============================================================
+from database import engine, Base
+from auth import models as auth_models  # noqa: F401 — registers models with Base
+from auth import router as auth_router
+
 app = FastAPI(
     title="ChemLab Kenya API",
     description="Chemistry API for Kenyan Universities",
-    version="1.5.0"
+    version="1.6.0"
 )
 
-# Enable CORS
+# ============================================================
+# CORS — allow_credentials=True REQUIRED for auth cookies
+# ============================================================
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
         "http://localhost:5000",
+        "http://127.0.0.1:5173",
         "https://chem-lab-kenya.vercel.app",
         "https://chemlab-kenya.vercel.app",
         "https://chemlab.co.ke",
         "https://www.chemlab.co.ke",
         "https://chemlab-kenya.onrender.com",
     ],
+    allow_credentials=True,   # ← NEW: required for cookies
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ============================================================
+# AUTH INITIALIZATION (NEW)
+# ============================================================
+# Create auth tables on startup — idempotent, safe every deploy
+Base.metadata.create_all(bind=engine)
+
+# Register auth routes
+app.include_router(auth_router)
 
 
 class MoleculeResponse(BaseModel):
@@ -259,8 +279,9 @@ def balance_equation_route(equation: str):
 def root():
     return {
         "message": "🧪 ChemLab Kenya API is running!",
-        "version": "1.5.0",
-        "status": "online"
+        "version": "1.6.0",
+        "status": "online",
+        "auth": "enabled"
     }
 
 
@@ -307,7 +328,7 @@ def generate_3d(smiles: str):
 
 @app.get("/health")
 def health_check():
-    return {"status": "healthy", "rdkit": "loaded"}
+    return {"status": "healthy", "rdkit": "loaded", "auth": "loaded"}
 
 
 # ============================================================
@@ -399,10 +420,6 @@ async def compound_by_name(name: str):
 # NMR PREDICTION ENDPOINT
 # ============================================================
 
-# DEPT-style 13C multiplicity letters -> number of attached hydrogens.
-# nmrshiftdb2 reports 13C peak "multiplicity" as CH-count (Q/T/D/S), not
-# a J-coupling pattern like 1H peaks use — these are different things
-# that happen to share letters, so we translate to unambiguous labels.
 DEPT_LABELS = {"q": "CH3", "t": "CH2", "d": "CH", "s": "C"}
 
 
@@ -412,11 +429,6 @@ async def predict_nmr(smiles: str, nucleus: str = "1H"):
     Predict NMR spectrum using nmrshiftdb2's public search/predict service,
     with a local RDKit-based rule-of-thumb fallback only if that service is
     unreachable or returns nothing usable.
-
-    nmrshiftdb2 first checks for a real experimentally measured spectrum
-    matching the structure, and falls back to its own HOSE-code-based
-    prediction if none exists — either way what comes back is far more
-    reliable than a from-scratch guess.
     """
     print(f"🔬 NMR Prediction: {smiles} ({nucleus})")
 
@@ -487,24 +499,7 @@ async def predict_nmr(smiles: str, nucleus: str = "1H"):
 
 
 def parse_nmrshiftdb_response(xml_text: str, nucleus: str) -> list:
-    """Parse nmrshiftdb2's CML/XML spectrum response into our signal format.
-
-    Response shape (namespaced XML):
-      <moleculeList><cml><spectrum><peakList>
-        <peak xValue="1.2" peakMultiplicity="q" atomRefs="a6 a7 a8" .../>
-        ...
-      </peakList></spectrum>...</cml></moleculeList>
-
-    For 1H peaks, the number of space-separated atomRefs is the integral
-    (how many equivalent protons make up that signal) and peakMultiplicity
-    is a normal J-coupling label (s/d/t/q/m/...).
-
-    For 13C peaks, peakMultiplicity is a DEPT-style CH-count code
-    (Q=CH3, T=CH2, D=CH, S=quaternary C), not a coupling pattern — we
-    translate it to an explicit "CH3"/"CH2"/"CH"/"C" label instead of
-    passing the raw letter through, since it means something different
-    from the 1H case despite sharing letters.
-    """
+    """Parse nmrshiftdb2's CML/XML spectrum response into our signal format."""
     signals = []
 
     try:
@@ -545,19 +540,12 @@ def parse_nmrshiftdb_response(xml_text: str, nucleus: str) -> list:
             "multiplicity": multiplicity
         })
 
-    # Report peaks high-to-low ppm, the conventional order in NMR write-ups.
     signals.sort(key=lambda s: s["shift"], reverse=True)
     return signals
 
 
 def get_fallback_nmr_prediction(smiles: str, nucleus: str = "1H") -> list:
-    """Last-resort rule-based estimate, used only when nmrshiftdb2 can't be
-    reached or has nothing for this structure.
-
-    This is a crude aromatic/aliphatic/heteroatom-adjacent heuristic, not a
-    real prediction model — treat any "source": "fallback" result as a rough
-    placeholder rather than something to rely on.
-    """
+    """Last-resort rule-based estimate."""
     try:
         mol = Chem.MolFromSmiles(smiles)
         if mol is None:
@@ -582,7 +570,7 @@ def get_fallback_nmr_prediction(smiles: str, nucleus: str = "1H") -> list:
 
             return group_equivalent_protons(signals)
 
-        else:  # 13C
+        else:
             return get_default_nmr_signals(nucleus)
 
     except Exception as e:
@@ -591,11 +579,7 @@ def get_fallback_nmr_prediction(smiles: str, nucleus: str = "1H") -> list:
 
 
 def estimate_proton_shift(atom, mol) -> float:
-    """Estimate 1H chemical shift based on environment.
-
-    `atom` is expected to be a hydrogen (from a molecule with explicit
-    Hs added); we look at what it's bonded to.
-    """
+    """Estimate 1H chemical shift based on environment."""
     if atom.GetSymbol() != "H":
         return 0
 
@@ -651,9 +635,7 @@ def group_equivalent_protons(signals: list) -> list:
 
 
 def get_default_nmr_signals(nucleus: str = "1H") -> list:
-    """Absolute last-resort placeholder signals, used only when even the
-    local rule-based estimator can't produce anything (e.g. no hydrogens
-    found, or 13C with no better option)."""
+    """Absolute last-resort placeholder signals."""
     if nucleus == "13C":
         return [
             {"shift": 30.00, "integral": 1, "multiplicity": "CH2"},
@@ -675,19 +657,13 @@ def get_default_nmr_signals(nucleus: str = "1H") -> list:
 async def chat(request: dict):
     """
     Send a message to the ChemLab AI assistant.
-    
-    Body:
-    {
-        "message": "What is the molar mass of water?",
-        "session_id": "optional-session-id"
-    }
     """
     message = request.get("message")
     session_id = request.get("session_id", "default")
-    
+
     if not message:
         return {"success": False, "error": "Message is required"}
-    
+
     result = chat_with_deepseek(message, session_id)
     return result
 
@@ -696,11 +672,6 @@ async def chat(request: dict):
 async def clear_chat(request: dict):
     """
     Clear conversation history.
-    
-    Body:
-    {
-        "session_id": "session-id"
-    }
     """
     session_id = request.get("session_id", "default")
     result = clear_conversation(session_id)
