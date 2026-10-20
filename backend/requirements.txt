@@ -17,3 +17,4 @@ python-jose[cryptography]
 disposable-email-score
 python-dotenv
 psycopg2-binary
+psycopg[binary]
