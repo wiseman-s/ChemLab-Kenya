@@ -1,6 +1,7 @@
 fastapi
 uvicorn
 pydantic
+pydantic[email]
 rdkit
 httpx
 sympy
@@ -10,3 +11,9 @@ certifi
 beautifulsoup4
 html5lib
 openai
+sqlalchemy
+argon2-cffi
+python-jose[cryptography]
+disposable-email-score
+python-dotenv
+psycopg2-binary
