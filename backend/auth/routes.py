@@ -1,5 +1,5 @@
 # backend/auth/routes.py
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Response, Request
 from sqlalchemy.orm import Session
 
@@ -121,11 +121,12 @@ def me(request: Request, db: Session = Depends(get_db)):
 def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
     """
     Request a password reset email.
+    Limits to 3 requests per email per 24 hours.
     Always returns the same generic message (no user enumeration).
     """
     user = db.query(User).filter(User.email == payload.email.lower()).first()
 
-    # Always return success — whether user exists or not
+    # Always return the same generic message, regardless of outcome
     generic_response = {
         "success": True,
         "message": "If that email is registered, you'll receive a reset link shortly.",
@@ -133,6 +134,21 @@ def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db
 
     if not user:
         return generic_response
+
+    # ---- Rate limit: 3 requests per email in last 24 hours ----
+    twenty_four_hours_ago = datetime.now(timezone.utc) - timedelta(hours=24)
+    recent_requests = (
+        db.query(PasswordReset)
+        .filter(
+            PasswordReset.user_id == user.id,
+            PasswordReset.created_at >= twenty_four_hours_ago,
+        )
+        .count()
+    )
+
+    if recent_requests >= 3:
+        print(f"⚠️ Rate limit hit for {user.email} ({recent_requests} requests in 24h)", flush=True)
+        return generic_response  # Still return the generic message — don't reveal the limit
 
     # Generate token, store hash
     raw_token, token_hash = generate_reset_token()
