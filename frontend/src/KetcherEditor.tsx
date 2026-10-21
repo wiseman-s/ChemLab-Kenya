@@ -7,13 +7,6 @@ declare global {
   }
 }
 
-// Both of these are dynamically imported at runtime instead of statically
-// at the top of the file. A static `import ... from 'ketcher-standalone'`
-// here would run the moment KetcherEditor.tsx itself loads — and since
-// App.tsx imports KetcherEditor statically too, that would drag the WASM
-// engine into the initial bundle regardless of the lazy() below. Wrapping
-// the UI component in lazy() alone doesn't help if its dependency is still
-// imported eagerly one line above it.
 const Editor = lazy(() =>
   import('ketcher-react').then((module) => ({ default: module.Editor }))
 );
@@ -26,8 +19,10 @@ interface KetcherEditorProps {
   height?: string;
 }
 
-const INIT_TIMEOUT_MS = 15000;
-const MAX_UPLOAD_BYTES = 2 * 1024 * 1024; // 2MB — structure files are tiny; guards against pasting the wrong file
+// Increased from 15s to 45s — the Standalone WASM engine is heavy (~10MB)
+// and on school Wi-Fi it regularly exceeds 20-30 seconds on first load.
+const INIT_TIMEOUT_MS = 45000;
+const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
 const ACCEPTED_EXTENSIONS = ['.mol', '.sdf', '.smi', '.txt'];
 
 const exampleBtnStyle: React.CSSProperties = {
@@ -55,17 +50,16 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [initTimedOut, setInitTimedOut] = useState(false);
-  const [editorKey, setEditorKey] = useState(0); // bump to force a full remount of <Editor>
-  const [activated, setActivated] = useState(false); // gates the lazy load
+  const [editorKey, setEditorKey] = useState(0);
+  const [activated, setActivated] = useState(false);
   const [smilesText, setSmilesText] = useState('CCO');
   const [pendingSmiles, setPendingSmiles] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [structProvider, setStructProvider] = useState<any>(null);
   const [structProviderError, setStructProviderError] = useState<string | null>(null);
+  const [elapsed, setElapsed] = useState(0);
 
-  // Loads ketcher-standalone (the WASM structure service) only once
-  // activated — this is one half of the lazy-load fix, alongside the
-  // lazy() import of the Editor component above.
+  // Load ketcher-standalone WASM engine once, on activation.
   useEffect(() => {
     if (!activated || structProvider) return;
 
@@ -76,7 +70,10 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
       })
       .catch((err) => {
         if (!cancelled) {
-          setStructProviderError('Could not load the chemistry engine: ' + (err as Error).message);
+          setStructProviderError(
+            'Could not load the chemistry engine. Check your internet connection and tap Retry.'
+          );
+          console.error('Ketcher standalone load error:', err);
         }
       });
 
@@ -85,33 +82,40 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
     };
   }, [activated, structProvider]);
 
-  // "Is it stuck?" timer, only running once loading has actually begun.
+  // Timer to detect "stuck" editor + show progress seconds.
   useEffect(() => {
-    if (!activated) return;
+    if (!activated || ready) {
+      if (initTimeoutRef.current) clearTimeout(initTimeoutRef.current);
+      return;
+    }
 
     setInitTimedOut(false);
-    if (initTimeoutRef.current) clearTimeout(initTimeoutRef.current);
+    setElapsed(0);
 
+    const start = Date.now();
+    const tick = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - start) / 1000));
+    }, 1000);
+
+    if (initTimeoutRef.current) clearTimeout(initTimeoutRef.current);
     initTimeoutRef.current = setTimeout(() => {
       if (!ready) setInitTimedOut(true);
     }, INIT_TIMEOUT_MS);
 
     return () => {
+      clearInterval(tick);
       if (initTimeoutRef.current) clearTimeout(initTimeoutRef.current);
     };
   }, [activated, editorKey, ready]);
 
   const handleInit = (ketcher: any) => {
     ketcherRef.current = ketcher;
-    window.ketcher = ketcher; // handy for poking at from devtools
+    window.ketcher = ketcher;
     setReady(true);
     setInitTimedOut(false);
     setError(null);
   };
 
-  // Triggers the lazy load. Called by every input path — typing a SMILES,
-  // clicking an example, or uploading a file — so there is no separate
-  // "now switch to Draw" step that state can fall out of sync with.
   const activate = useCallback(() => {
     setActivated(true);
     setError(null);
@@ -124,7 +128,8 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
     setError(null);
     setStructProvider(null);
     setStructProviderError(null);
-    setEditorKey((k) => k + 1); // remount <Editor> from scratch
+    setElapsed(0);
+    setEditorKey((k) => k + 1);
   }, []);
 
   const emitSmiles = (smiles: string) => {
@@ -149,17 +154,8 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
     }
   };
 
-  // Loads pending structure text (SMILES, or raw molfile/SDF content from
-  // an upload) once the editor is ready. Shared by manual SMILES entry,
-  // example clicks, and file uploads — one retry-safe path for all three.
-  //
-  // After a successful load we re-derive the canonical SMILES from Ketcher
-  // itself and emit that, so uploaded .mol/.sdf files feed the rest of the
-  // app (analysis panel etc.) the same way typed SMILES does.
   useEffect(() => {
-    if (!ready || !ketcherRef.current || !pendingSmiles) {
-      return;
-    }
+    if (!ready || !ketcherRef.current || !pendingSmiles) return;
 
     const loadPendingMolecule = async () => {
       try {
@@ -177,11 +173,7 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
         }
       } catch (err) {
         console.error('Failed to load structure into Ketcher:', err);
-        setError(
-          'Could not display this structure — check that it\'s valid, then try again.'
-        );
-        // Clear pendingSmiles even on failure, so retrying with the exact
-        // same text isn't a no-op (React sees no state change otherwise).
+        setError('Could not display this structure — check that it\'s valid, then try again.');
         setPendingSmiles(null);
       }
     };
@@ -191,12 +183,10 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
 
   const submitSmilesText = () => {
     const cleanSmiles = smilesText.trim();
-
     if (!cleanSmiles) {
       setError('Enter a SMILES string first.');
       return;
     }
-
     activate();
     setPendingSmiles(cleanSmiles);
   };
@@ -215,8 +205,6 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
       return;
     }
     try {
-      // Public setMolecule API, not the undocumented `.editor.clear()`
-      // internal property, which can break across Ketcher versions.
       await ketcherRef.current.setMolecule('');
       setError(null);
     } catch (err) {
@@ -236,25 +224,19 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
 
     const extension = '.' + (file.name.split('.').pop() || '').toLowerCase();
     if (!ACCEPTED_EXTENSIONS.includes(extension)) {
-      setError(
-        `Unsupported file type "${extension}". Please upload one of: ${ACCEPTED_EXTENSIONS.join(', ')}`
-      );
+      setError(`Unsupported file type "${extension}". Please upload one of: ${ACCEPTED_EXTENSIONS.join(', ')}`);
       return;
     }
 
     if (file.size > MAX_UPLOAD_BYTES) {
       setError(
         `That file is too large (${(file.size / 1024 / 1024).toFixed(1)}MB). ` +
-        `Structure files should be under ${MAX_UPLOAD_BYTES / 1024 / 1024}MB — ` +
-        `double-check you picked the right file.`
+        `Structure files should be under ${MAX_UPLOAD_BYTES / 1024 / 1024}MB.`
       );
       return;
     }
 
-    // Uploading implies wanting to see it on the canvas — start loading
-    // the editor now, in parallel with reading the file.
     activate();
-
     setUploading(true);
     const reader = new FileReader();
 
@@ -282,7 +264,7 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
 
     reader.onerror = () => {
       setUploading(false);
-      setError('Could not read that file — it may be corrupted or in an unreadable encoding.');
+      setError('Could not read that file — it may be corrupted.');
     };
 
     reader.readAsText(file);
@@ -290,7 +272,7 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
 
   return (
     <div>
-      {/* Persistent quick-paste bar */}
+      {/* Quick-paste bar */}
       <div style={{ display: 'flex', gap: '10px', marginBottom: '15px', flexWrap: 'wrap' }}>
         <input
           type="text"
@@ -304,7 +286,7 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
             padding: '10px',
             border: '2px solid #00897b',
             borderRadius: '4px',
-            fontSize: isMobileDevice ? '16px' : '15px', // 16px avoids iOS auto-zoom-on-focus
+            fontSize: isMobileDevice ? '16px' : '15px',
           }}
         />
         <button
@@ -351,8 +333,7 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
         Accepts .mol, .sdf, .smi, or .txt files (max {MAX_UPLOAD_BYTES / 1024 / 1024}MB)
       </div>
 
-      {/* Quick examples — click one to load it straight onto the canvas.
-          No separate tab, no manual "switch to Draw" step. */}
+      {/* Quick examples */}
       <div style={{ marginBottom: '15px' }}>
         <strong style={{ fontSize: '0.9rem' }}>Quick Examples:</strong>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '8px' }}>
@@ -365,9 +346,6 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
       </div>
 
       {!activated ? (
-        // Nothing has loaded yet — no network request has fired for the
-        // Ketcher bundle. This is what keeps first paint fast: the heavy
-        // engine only starts downloading once the user actually interacts.
         <div
           style={{
             height,
@@ -385,8 +363,9 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
         >
           <div style={{ fontSize: '40px', marginBottom: '10px' }}>✏️</div>
           <div style={{ fontWeight: 'bold', color: '#00695c' }}>Tap to Load Molecular Editor</div>
-          <div style={{ fontSize: '13px', marginTop: '5px' }}>
-            Loads the drawing tools. Takes a few seconds on first load.
+          <div style={{ fontSize: '13px', marginTop: '5px', maxWidth: '300px' }}>
+            The drawing tools take <strong>15-30 seconds</strong> to load on the first visit.
+            After that, they load instantly from your browser cache.
           </div>
           <button
             onClick={activate}
@@ -420,7 +399,7 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
           padding: '20px'
         }}>
           <div style={{ fontSize: '32px', marginBottom: '10px' }}>⚠️</div>
-          <div>{structProviderError}</div>
+          <div style={{ maxWidth: '400px' }}>{structProviderError}</div>
           <button
             onClick={reloadEditor}
             style={{
@@ -447,10 +426,15 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
           background: '#fafafa',
           border: '1px solid #ddd',
           borderRadius: '8px',
-          color: '#666'
+          color: '#666',
+          textAlign: 'center',
+          padding: '20px'
         }}>
           <div style={{ fontSize: '24px', marginBottom: '10px' }}>🧪</div>
-          <div>Starting chemistry engine...</div>
+          <div style={{ fontWeight: 'bold' }}>Starting chemistry engine...</div>
+          <div style={{ fontSize: '12px', color: '#999', marginTop: '6px' }}>
+            Downloading drawing tools ({elapsed}s)
+          </div>
         </div>
       ) : (
         <div style={{ border: '1px solid #ccc', borderRadius: '8px', overflow: 'hidden', height, position: 'relative' }}>
@@ -467,6 +451,7 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
               }}>
                 <div style={{ fontSize: '24px', marginBottom: '10px' }}>🧪</div>
                 <div>Loading molecular editor...</div>
+                <div style={{ fontSize: '12px', color: '#999', marginTop: '6px' }}>({elapsed}s)</div>
               </div>
             }
           >
@@ -482,15 +467,15 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
       )}
 
       {activated && structProvider && !ready && !initTimedOut && (
-        <div style={{ padding: '8px 0', fontSize: '0.9rem', color: '#666' }}>
-          Initializing editor (first load can take a few seconds)...
+        <div style={{ padding: '8px 0', fontSize: '0.9rem', color: '#666', textAlign: 'center' }}>
+          Initializing editor ({elapsed}s / 45s max)...
         </div>
       )}
 
       {activated && !ready && initTimedOut && (
         <div style={{
           marginTop: '10px',
-          padding: '10px',
+          padding: '12px',
           background: '#fff3e0',
           borderRadius: '4px',
           fontSize: '0.9rem',
@@ -501,7 +486,12 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
           flexWrap: 'wrap',
           gap: '10px'
         }}>
-          <span>The editor is taking longer than expected. It may be a slow connection, or it failed to start.</span>
+          <span>
+            <strong>The editor is still loading after 45 seconds.</strong><br />
+            <span style={{ fontSize: '0.85rem' }}>
+              This is unusual. Check your internet connection, or tap Retry.
+            </span>
+          </span>
           <button
             onClick={reloadEditor}
             style={{
