@@ -1,5 +1,6 @@
 // src/components/CompoundExplorer.tsx
 import React, { useMemo, useRef, useState } from 'react';
+import { useGuestLimits } from '../contexts/GuestLimitsContext';
 import {
   calculateElementComposition,
   type ElementComposition,
@@ -25,6 +26,8 @@ const MODES: { value: SearchMode; label: string; placeholder: string }[] = [
 const card: React.CSSProperties = { padding: '12px', background: 'white', borderRadius: '5px' };
 
 const CompoundExplorer: React.FC = () => {
+  const { tryUse } = useGuestLimits();
+
   const [searchTerm, setSearchTerm] = useState('');
   const [mode, setMode] = useState<SearchMode>('auto');
   const [results, setResults] = useState<Compound[]>([]);
@@ -70,6 +73,8 @@ const CompoundExplorer: React.FC = () => {
       setError('Enter something to search for.');
       return;
     }
+
+    if (!tryUse('compound')) return;
 
     const id = ++requestId.current;
     setLoading(true);
