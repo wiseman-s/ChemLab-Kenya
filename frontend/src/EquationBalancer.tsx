@@ -1,6 +1,7 @@
 // src/EquationBalancer.tsx
 import React, { useState } from 'react';
 import { API_URL } from './config';
+import { useGuestLimits } from './contexts/GuestLimitsContext';
 
 const EquationBalancer: React.FC = () => {
   const [equation, setEquation] = useState('CH4 + O2 -> CO2 + H2O');
@@ -8,24 +9,26 @@ const EquationBalancer: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const { tryUse, remaining } = useGuestLimits();
+  const remainingBalance = remaining('balance');
+
   const balanceEquation = async () => {
     if (!equation.trim()) {
       setError('Please enter an equation');
       return;
     }
 
+    if (!tryUse('balance')) return;
+
     setLoading(true);
     setError('');
     setResult(null);
 
     try {
-      // Clean the equation: remove spaces
       const cleanEquation = equation
         .replace(/\s/g, '')
         .replace(/->/g, '->');
 
-      // Use API_URL from config — relative path in production goes through
-      // Vercel's proxy to Render, hiding the backend URL from the browser.
       const response = await fetch(
         `${API_URL}/balance_equation?equation=${encodeURIComponent(cleanEquation)}`
       );
@@ -52,7 +55,14 @@ const EquationBalancer: React.FC = () => {
 
   return (
     <div style={{ padding: '20px' }}>
-      <h3 style={{ color: '#00695c', marginTop: 0 }}>Chemical Equation Balancer</h3>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
+        <h3 style={{ color: '#00695c', marginTop: 0 }}>Chemical Equation Balancer</h3>
+        {Number.isFinite(remainingBalance) && (
+          <span style={{ fontSize: '12px', color: '#888' }}>
+            {remainingBalance} free left
+          </span>
+        )}
+      </div>
       <p style={{ color: '#666', marginBottom: '15px' }}>
         Enter a chemical equation and get the balanced version.
       </p>
