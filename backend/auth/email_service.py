@@ -73,6 +73,13 @@ If you didn't request this, ignore this email.
         "subject": "Reset your ChemLab Kenya password",
         "htmlContent": html_content,
         "textContent": text_content,
+        # Add this block to disable click tracking for this email
+        "params": {
+            "tracking": {
+                "click": False,
+                "open": False,
+            }
+        },
     }
 
     headers = {
