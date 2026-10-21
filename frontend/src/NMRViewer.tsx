@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { API_URL } from './config';
+import { useGuestLimits } from './contexts/GuestLimitsContext';
 
 interface NMRSignal {
   shift: number;
@@ -29,6 +30,7 @@ const NMRViewer: React.FC<{ smiles: string }> = ({ smiles }) => {
   const [error, setError] = useState<string | null>(null);
   const [nucleus, setNucleus] = useState<'1H' | '13C'>('1H');
 
+  const { tryUse, remaining } = useGuestLimits();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -42,11 +44,15 @@ const NMRViewer: React.FC<{ smiles: string }> = ({ smiles }) => {
     const controller = new AbortController();
     let cancelled = false;
 
-    // Debounce so we don't hit the backend (and nmrshiftdb2 behind it)
-    // on every keystroke/draw update while someone is editing a structure.
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     debounceRef.current = setTimeout(() => {
+      // Only consume a "try" when we're about to hit the API.
+      if (!tryUse('nmr')) {
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       setError(null);
 
@@ -81,7 +87,7 @@ const NMRViewer: React.FC<{ smiles: string }> = ({ smiles }) => {
       controller.abort();
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [smiles, nucleus]);
+  }, [smiles, nucleus, tryUse]);
 
   const getMultiplicityLabel = (mult: string) => {
     const labels: Record<string, string> = {
@@ -96,8 +102,6 @@ const NMRViewer: React.FC<{ smiles: string }> = ({ smiles }) => {
       'dt': 'Doublet of triplets',
       'td': 'Triplet of doublets',
       'dq': 'Doublet of quartets',
-      // 13C peaks come back as DEPT-style CH-count labels rather than a
-      // coupling pattern (see backend) — pass those through as-is.
       'CH3': 'CH3',
       'CH2': 'CH2',
       'CH': 'CH',
@@ -114,6 +118,8 @@ const NMRViewer: React.FC<{ smiles: string }> = ({ smiles }) => {
     );
   }
 
+  const remainingNMR = remaining('nmr');
+
   return (
     <div style={{
       padding: '15px',
@@ -125,6 +131,11 @@ const NMRViewer: React.FC<{ smiles: string }> = ({ smiles }) => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
         <h4 style={{ color: '#00695c', margin: 0 }}>NMR Prediction</h4>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          {Number.isFinite(remainingNMR) && (
+            <span style={{ fontSize: '11px', color: '#888' }}>
+              {remainingNMR} free left
+            </span>
+          )}
           <button
             onClick={() => setNucleus('1H')}
             aria-pressed={nucleus === '1H'}
