@@ -1,6 +1,6 @@
 // src/NMRViewer.tsx
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { API_URL } from './config';
 import { useGuestLimits } from './contexts/GuestLimitsContext';
 
@@ -22,72 +22,48 @@ interface NMRData {
   error?: string;
 }
 
-const DEBOUNCE_MS = 500;
-
 const NMRViewer: React.FC<{ smiles: string }> = ({ smiles }) => {
   const [data, setData] = useState<NMRData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nucleus, setNucleus] = useState<'1H' | '13C'>('1H');
+  const [lastPredictedSmiles, setLastPredictedSmiles] = useState<string | null>(null);
 
   const { tryUse, remaining } = useGuestLimits();
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const remainingNMR = remaining('nmr');
 
-  useEffect(() => {
+  const predict = async () => {
     if (!smiles) {
-      setData(null);
-      setError(null);
-      setLoading(false);
+      setError('Draw a molecule first.');
       return;
     }
 
-    const controller = new AbortController();
-    let cancelled = false;
+    // Guest limit — only fires on button click.
+    if (!tryUse('nmr')) return;
 
-    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setLoading(true);
+    setError(null);
 
-    debounceRef.current = setTimeout(() => {
-      // Only consume a "try" when we're about to hit the API.
-      if (!tryUse('nmr')) {
-        setLoading(false);
-        return;
+    try {
+      const response = await fetch(
+        `${API_URL}/api/predict_nmr?smiles=${encodeURIComponent(smiles)}&nucleus=${nucleus}`
+      );
+      if (!response.ok) {
+        throw new Error(`Server returned ${response.status}`);
       }
-
-      setLoading(true);
-      setError(null);
-
-      fetch(
-        `${API_URL}/api/predict_nmr?smiles=${encodeURIComponent(smiles)}&nucleus=${nucleus}`,
-        { signal: controller.signal }
-      )
-        .then(async (response) => {
-          if (!response.ok) {
-            throw new Error(`Server returned ${response.status}`);
-          }
-          const result: NMRData = await response.json();
-          if (result.error || !result.success) {
-            throw new Error(result.error || 'NMR prediction failed');
-          }
-          if (!cancelled) {
-            setData(result);
-          }
-        })
-        .catch((err: unknown) => {
-          if (cancelled || (err as Error).name === 'AbortError') return;
-          setError((err as Error).message);
-          setData(null);
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false);
-        });
-    }, DEBOUNCE_MS);
-
-    return () => {
-      cancelled = true;
-      controller.abort();
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [smiles, nucleus, tryUse]);
+      const result: NMRData = await response.json();
+      if (result.error || !result.success) {
+        throw new Error(result.error || 'NMR prediction failed');
+      }
+      setData(result);
+      setLastPredictedSmiles(smiles);
+    } catch (err) {
+      setError((err as Error).message);
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getMultiplicityLabel = (mult: string) => {
     const labels: Record<string, string> = {
@@ -118,7 +94,8 @@ const NMRViewer: React.FC<{ smiles: string }> = ({ smiles }) => {
     );
   }
 
-  const remainingNMR = remaining('nmr');
+  // Show a stale-warning if the canvas has changed since the last prediction
+  const isStale = data !== null && lastPredictedSmiles !== smiles;
 
   return (
     <div style={{
@@ -128,55 +105,91 @@ const NMRViewer: React.FC<{ smiles: string }> = ({ smiles }) => {
       border: '1px solid #e0e0e0',
       marginTop: '15px',
     }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
         <h4 style={{ color: '#00695c', margin: 0 }}>NMR Prediction</h4>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
           {Number.isFinite(remainingNMR) && (
             <span style={{ fontSize: '11px', color: '#888' }}>
               {remainingNMR} free left
             </span>
           )}
+
+          <div style={{ display: 'flex', gap: '4px' }}>
+            <button
+              onClick={() => setNucleus('1H')}
+              aria-pressed={nucleus === '1H'}
+              disabled={loading}
+              style={{
+                padding: '4px 12px',
+                background: nucleus === '1H' ? '#00897b' : '#e0e0e0',
+                color: nucleus === '1H' ? 'white' : '#333',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: loading ? 'default' : 'pointer',
+                fontSize: '12px',
+                opacity: loading ? 0.7 : 1,
+              }}
+            >
+              1H
+            </button>
+            <button
+              onClick={() => setNucleus('13C')}
+              aria-pressed={nucleus === '13C'}
+              disabled={loading}
+              style={{
+                padding: '4px 12px',
+                background: nucleus === '13C' ? '#00897b' : '#e0e0e0',
+                color: nucleus === '13C' ? 'white' : '#333',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: loading ? 'default' : 'pointer',
+                fontSize: '12px',
+                opacity: loading ? 0.7 : 1,
+              }}
+            >
+              13C
+            </button>
+          </div>
+
           <button
-            onClick={() => setNucleus('1H')}
-            aria-pressed={nucleus === '1H'}
+            onClick={predict}
             disabled={loading}
             style={{
-              padding: '4px 12px',
-              background: nucleus === '1H' ? '#00897b' : '#e0e0e0',
-              color: nucleus === '1H' ? 'white' : '#333',
+              padding: '6px 16px',
+              background: loading ? '#80cbc4' : '#00897b',
+              color: 'white',
               border: 'none',
               borderRadius: '4px',
-              cursor: loading ? 'default' : 'pointer',
-              fontSize: '12px',
-              opacity: loading ? 0.7 : 1,
+              cursor: loading ? 'not-allowed' : 'pointer',
+              fontSize: '13px',
+              fontWeight: 700,
             }}
           >
-            1H
+            {loading ? 'Predicting...' : 'Predict NMR'}
           </button>
-          <button
-            onClick={() => setNucleus('13C')}
-            aria-pressed={nucleus === '13C'}
-            disabled={loading}
-            style={{
-              padding: '4px 12px',
-              background: nucleus === '13C' ? '#00897b' : '#e0e0e0',
-              color: nucleus === '13C' ? 'white' : '#333',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: loading ? 'default' : 'pointer',
-              fontSize: '12px',
-              opacity: loading ? 0.7 : 1,
-            }}
-          >
-            13C
-          </button>
-          {data && (
-            <span style={{ fontSize: '11px', color: '#999' }}>
-              via {data.source}
-            </span>
-          )}
         </div>
       </div>
+
+      {!data && !loading && !error && (
+        <div style={{ color: '#666', fontSize: '13px', marginTop: '10px' }}>
+          Click <strong>Predict NMR</strong> to run a {nucleus} spectrum prediction
+          for the current structure.
+        </div>
+      )}
+
+      {isStale && (
+        <div style={{
+          marginTop: '10px',
+          padding: '8px 10px',
+          background: '#fff3e0',
+          borderRadius: '4px',
+          fontSize: '12px',
+          color: '#7a5c00',
+        }}>
+          The structure has changed since this prediction. Click <strong>Predict NMR</strong> again to refresh.
+        </div>
+      )}
 
       {loading && (
         <div style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
