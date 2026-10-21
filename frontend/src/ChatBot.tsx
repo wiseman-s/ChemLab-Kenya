@@ -1,7 +1,8 @@
-// frontend/src/ChatBot.tsx
+
 import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { API_URL } from './config';
+import { useGuestLimits } from './contexts/GuestLimitsContext';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -10,6 +11,8 @@ interface Message {
 }
 
 const ChatBot: React.FC = () => {
+  const { tryUse } = useGuestLimits();
+
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -31,6 +34,7 @@ const ChatBot: React.FC = () => {
 
   const sendMessage = async () => {
     if (!input.trim() || loading || cooldown) return;
+    if (!tryUse('chat')) return;
 
     const userMessage: Message = {
       role: 'user',
@@ -224,8 +228,7 @@ const ChatBot: React.FC = () => {
                     <div className="chatbot-markdown">
                       <ReactMarkdown
                         components={{
-                          // Keep headers visually small so they don't look
-                          // out of place inside a compact chat bubble
+                          // Keep headers visually small inside chat bubbles
                           h1: ({ node, ...props }) => <p style={{ fontWeight: 700, fontSize: '15px', margin: '4px 0' }} {...props} />,
                           h2: ({ node, ...props }) => <p style={{ fontWeight: 700, fontSize: '14px', margin: '4px 0' }} {...props} />,
                           h3: ({ node, ...props }) => <p style={{ fontWeight: 700, fontSize: '14px', margin: '4px 0' }} {...props} />,
@@ -234,7 +237,7 @@ const ChatBot: React.FC = () => {
                           ol: ({ node, ...props }) => <ol style={{ margin: '4px 0', paddingLeft: '18px' }} {...props} />,
                           li: ({ node, ...props }) => <li style={{ marginBottom: '2px' }} {...props} />,
                           strong: ({ node, ...props }) => <strong style={{ fontWeight: 700 }} {...props} />,
-                          hr: () => null, // suppress the "---" dividers entirely inside a small bubble
+                          hr: () => null
                         }}
                       >
                         {msg.content}
