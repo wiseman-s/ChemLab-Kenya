@@ -69,6 +69,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [smilesInput, setSmilesInput] = useState('CCO');
 
+  // ---- Password reset token (from ?reset_token= in URL) ----
   const [resetToken, setResetToken] = useState<string | null>(null);
 
   useEffect(() => {
@@ -85,7 +86,6 @@ function App() {
       return;
     }
 
-    // Guest limit check — paywall shows if exceeded
     if (!tryUse('analyze')) return;
 
     setLoading(true);
@@ -290,10 +290,9 @@ function App() {
         <ResetPasswordModal
           token={resetToken}
           onSuccess={() => {
-            // Clear the URL and token, then show the login modal
             window.history.replaceState({}, document.title, window.location.pathname);
             setResetToken(null);
-            alert('Password reset! You can now sign in.');
+            alert('Password reset successfully! You can now sign in.');
           }}
           onCancel={() => {
             window.history.replaceState({}, document.title, window.location.pathname);
