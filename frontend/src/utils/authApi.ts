@@ -73,3 +73,21 @@ export async function getMe(): Promise<AuthUser | null> {
   if (res.status === 401) return null;
   return handle(res);
 }
+
+export async function forgotPassword(email: string): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(`${AUTH_BASE}/forgot-password`, {
+    ...opts,
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+  return handle(res);
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(`${AUTH_BASE}/reset-password`, {
+    ...opts,
+    method: 'POST',
+    body: JSON.stringify({ token, new_password: newPassword }),
+  });
+  return handle(res);
+}
