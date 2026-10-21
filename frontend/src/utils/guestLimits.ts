@@ -1,22 +1,25 @@
 // frontend/src/utils/guestLimits.ts
 // Tracks guest usage per session using sessionStorage.
-// Cleared when the browser session ends. Client-side only — this is
-// motivational, not security. Real enforcement requires backend auth.
+// Cleared when browser session ends. Client-side only — motivational, not secure.
 
 const STORAGE_KEY = 'chemlab_guest_usage';
 
-export type LimitedFeature = 'analyze' | 'compound' | 'chat';
+export type LimitedFeature = 'analyze' | 'compound' | 'chat' | 'nmr' | 'balance';
 
 export const LIMITS: Record<LimitedFeature, number> = {
   analyze: 3,
   compound: 3,
   chat: 5,
+  nmr: 3,
+  balance: 3,
 };
 
 export interface GuestUsage {
   analyze: number;
   compound: number;
   chat: number;
+  nmr: number;
+  balance: number;
   bannerDismissed: boolean;
 }
 
@@ -24,6 +27,8 @@ const EMPTY_USAGE: GuestUsage = {
   analyze: 0,
   compound: 0,
   chat: 0,
+  nmr: 0,
+  balance: 0,
   bannerDismissed: false,
 };
 
@@ -41,9 +46,7 @@ export function getUsage(): GuestUsage {
 export function setUsage(usage: GuestUsage): void {
   try {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(usage));
-  } catch {
-    // sessionStorage may be disabled (private mode) — fail silently
-  }
+  } catch {}
 }
 
 export function incrementUsage(feature: LimitedFeature): GuestUsage {
@@ -70,8 +73,6 @@ export function dismissBanner(): void {
 }
 
 export function resetLimits(): void {
-  // Called after successful login/signup — since they're now authenticated,
-  // limits no longer apply and we clear any counters.
   try {
     sessionStorage.removeItem(STORAGE_KEY);
   } catch {}
