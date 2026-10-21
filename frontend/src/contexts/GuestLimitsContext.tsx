@@ -11,21 +11,13 @@ import {
 } from '../utils/guestLimits';
 
 interface GuestLimitsContextValue {
-  /** Returns true if the action is allowed. Increments usage and shows paywall if not. */
   tryUse: (feature: LimitedFeature) => boolean;
-  /** True if the paywall modal should show. */
   showPaywall: LimitedFeature | null;
-  /** Close the paywall modal without signing up. */
   closePaywall: () => void;
-  /** True if we should show the gentle "sign up to save work" banner. */
   showBanner: boolean;
-  /** Dismiss the banner. */
   hideBanner: () => void;
-  /** Remaining uses for a feature (for display in UI). */
   remaining: (feature: LimitedFeature) => number;
-  /** Total limit for a feature. */
   limit: (feature: LimitedFeature) => number;
-  /** Reset counters (called after login/signup automatically by AuthContext). */
   reset: () => void;
 }
 
@@ -38,7 +30,6 @@ export const GuestLimitsProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const tryUse = useCallback(
     (feature: LimitedFeature): boolean => {
-      // Logged-in users have no limits
       if (user) return true;
 
       const usage = getUsage();
@@ -51,9 +42,7 @@ export const GuestLimitsProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
       incrementUsage(feature);
 
-      // After the first use, gently nudge (banner shows once per session)
       if (!bannerDismissedState && used === 0) {
-        // Banner will be shown by App.tsx reading showBanner
         setBannerDismissedState(getUsage().bannerDismissed);
       }
 
