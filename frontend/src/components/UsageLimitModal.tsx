@@ -4,7 +4,7 @@ import AuthModal from './AuthModal';
 import { LIMITED_FEATURE_LABELS } from '../utils/guestLimitsLabels';
 
 interface Props {
-  feature: 'analyze' | 'compound' | 'chat';
+  feature: 'analyze' | 'compound' | 'chat' | 'nmr' | 'balance';
   onClose: () => void;
 }
 
@@ -47,7 +47,6 @@ const UsageLimitModal: React.FC<Props> = ({ feature, onClose }) => {
         </h2>
         <p style={{ color: '#555', fontSize: '15px', lineHeight: 1.6, marginTop: 0 }}>
           Create a free account to continue using the {LIMITED_FEATURE_LABELS[feature].singular}.
-          You'll get unlimited use, saved history, and no interruptions.
         </p>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '22px' }}>
