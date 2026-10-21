@@ -10,6 +10,7 @@ import CompoundExplorer from './components/CompoundExplorer';
 import ChatBot from './ChatBot';
 import UserMenu from './components/UserMenu';
 import UsageLimitModal from './components/UsageLimitModal';
+import ResetPasswordModal from './components/ResetPasswordModal';
 import { useGuestLimits } from './contexts/GuestLimitsContext';
 import './App.css';
 
@@ -67,6 +68,14 @@ function App() {
   const [analysis, setAnalysis] = useState<MoleculeData | null>(null);
   const [loading, setLoading] = useState(false);
   const [smilesInput, setSmilesInput] = useState('CCO');
+
+  const [resetToken, setResetToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('reset_token');
+    if (token) setResetToken(token);
+  }, []);
 
   const { tryUse, showPaywall, closePaywall } = useGuestLimits();
 
@@ -276,6 +285,22 @@ function App() {
       <ChatBot />
 
       {showPaywall && <UsageLimitModal feature={showPaywall} onClose={closePaywall} />}
+
+      {resetToken && (
+        <ResetPasswordModal
+          token={resetToken}
+          onSuccess={() => {
+            // Clear the URL and token, then show the login modal
+            window.history.replaceState({}, document.title, window.location.pathname);
+            setResetToken(null);
+            alert('Password reset! You can now sign in.');
+          }}
+          onCancel={() => {
+            window.history.replaceState({}, document.title, window.location.pathname);
+            setResetToken(null);
+          }}
+        />
+      )}
     </div>
   );
 }
