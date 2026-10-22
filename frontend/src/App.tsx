@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import KetcherEditor from './KetcherEditor';
 import Mol3DViewer from './Mol3DViewer';
-import NMR13CViewer from './NMR13CViewer';
+import DrugLikenessPanel from './DrugLikenessPanel';
 import EquationBalancer from './EquationBalancer';
 import ChemCalculators from './ChemCalculators';
 import PhysicsCalculators from './PhysicsCalculators';
@@ -165,10 +165,6 @@ function App() {
                 </div>
               )}
 
-              {analysis && !analysis.error && analysis.smiles && (
-                <NMR13CViewer smiles={analysis.smiles} />
-              )}
-
               <div style={panelStyle}>
                 {analysis ? (
                   analysis.error ? (
@@ -226,6 +222,10 @@ function App() {
                   <p style={{ color: '#666' }}>Draw a molecule in Ketcher, click "Get SMILES", then click "Analyze"</p>
                 )}
               </div>
+
+              {analysis && !analysis.error && analysis.smiles && (
+                <DrugLikenessPanel analysis={analysis as any} />
+              )}
             </div>
           </div>
         )}
