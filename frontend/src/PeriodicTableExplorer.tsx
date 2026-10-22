@@ -216,28 +216,50 @@ const PeriodicTableExplorer: React.FC = () => {
             position: 'fixed',
             top: 0,
             right: 0,
-            width: 'min(480px, 100vw)',
+            width: 'min(520px, 100vw)',
             height: '100vh',
             background: 'white',
             boxShadow: '-8px 0 24px rgba(0,0,0,0.15)',
             zIndex: 3000,
-            overflowY: 'auto',
-            padding: '24px',
-            boxSizing: 'border-box',
+            display: 'flex',
+            flexDirection: 'column',
             animation: 'slideIn 0.25s ease-out',
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h3 style={{ color: '#00695c', margin: 0 }}>Details</h3>
+          {/* Sticky header — always visible, easy to close on mobile */}
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '12px 16px',
+              background: '#00695c',
+              color: 'white',
+              flexShrink: 0,
+              position: 'sticky',
+              top: 0,
+              zIndex: 1,
+            }}
+          >
+            <h3 style={{ margin: 0, color: 'white', fontSize: '16px' }}>
+              {selectedElement ? selectedElement.name : selectedCategory ? 'Category Info' : 'Details'}
+            </h3>
             <button
               onClick={closePanel}
               style={{
-                background: 'transparent',
+                background: 'rgba(255,255,255,0.2)',
                 border: 'none',
-                fontSize: '26px',
+                color: 'white',
+                fontSize: '24px',
                 cursor: 'pointer',
-                color: '#666',
                 lineHeight: 1,
+                width: '36px',
+                height: '36px',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                touchAction: 'manipulation',
               }}
               aria-label="Close"
             >
@@ -245,102 +267,117 @@ const PeriodicTableExplorer: React.FC = () => {
             </button>
           </div>
 
-          {/* Element view */}
-          {selectedElement && (
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
-                <div
-                  style={{
-                    width: '80px',
-                    height: '80px',
-                    background: getCategoryColor(selectedElement.category),
-                    borderRadius: '10px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    border: '2px solid #00695c',
-                  }}
-                >
-                  <div style={{ fontSize: '28px', fontWeight: 700, lineHeight: 1 }}>{selectedElement.symbol}</div>
-                  <div style={{ fontSize: '12px', marginTop: '2px' }}>{selectedElement.number}</div>
-                </div>
-                <div>
-                  <h2 style={{ margin: 0, color: '#00695c' }}>{selectedElement.name}</h2>
-                  <div style={{ fontSize: '13px', color: '#666', textTransform: 'capitalize' }}>
-                    {selectedElement.category}
+          {/* Scrollable content */}
+          <div
+            style={{
+              flex: 1,
+              overflowY: 'auto',
+              padding: '20px 16px',
+              WebkitOverflowScrolling: 'touch',
+              boxSizing: 'border-box',
+            }}
+          >
+            {/* Element view */}
+            {selectedElement && (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
+                  <div
+                    style={{
+                      width: '80px',
+                      height: '80px',
+                      background: getCategoryColor(selectedElement.category),
+                      borderRadius: '10px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      border: '2px solid #00695c',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <div style={{ fontSize: '28px', fontWeight: 700, lineHeight: 1 }}>{selectedElement.symbol}</div>
+                    <div style={{ fontSize: '12px', marginTop: '2px' }}>{selectedElement.number}</div>
                   </div>
-                  <div style={{ fontSize: '13px', color: '#666' }}>
-                    Period {selectedElement.period}
-                    {selectedElement.group !== null && ` · Group ${selectedElement.group}`}
+                  <div>
+                    <h2 style={{ margin: 0, color: '#00695c' }}>{selectedElement.name}</h2>
+                    <div style={{ fontSize: '13px', color: '#666', textTransform: 'capitalize' }}>
+                      {selectedElement.category}
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#666' }}>
+                      Period {selectedElement.period}
+                      {selectedElement.group !== null && ` · Group ${selectedElement.group}`}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
-                <Info label="Atomic Mass" value={`${selectedElement.mass} u`} />
-                <Info label="Atomic Number" value={String(selectedElement.number)} />
-                {selectedElement.state && <Info label="State" value={selectedElement.state} />}
-                {selectedElement.color && <Info label="Colour" value={selectedElement.color} />}
-                {selectedElement.electronConfiguration && (
-                  <div style={{ gridColumn: '1 / -1' }}>
-                    <Info label="Electron Configuration" value={selectedElement.electronConfiguration} mono />
-                  </div>
+                <div
+                  className="periodic-info-grid"
+                  style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}
+                >
+                  <Info label="Atomic Mass" value={`${selectedElement.mass} u`} />
+                  <Info label="Atomic Number" value={String(selectedElement.number)} />
+                  {selectedElement.state && <Info label="State" value={selectedElement.state} />}
+                  {selectedElement.color && <Info label="Colour" value={selectedElement.color} />}
+                  {selectedElement.electronConfiguration && (
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <Info label="Electron Configuration" value={selectedElement.electronConfiguration} mono />
+                    </div>
+                  )}
+                </div>
+
+                {selectedElement.notes && (
+                  <Section title="Notes">
+                    <p style={{ margin: 0, lineHeight: 1.6 }}>{selectedElement.notes}</p>
+                  </Section>
+                )}
+
+                {selectedElement.uses && (
+                  <Section title="Common Uses">
+                    <p style={{ margin: 0, lineHeight: 1.6 }}>{selectedElement.uses}</p>
+                  </Section>
                 )}
               </div>
+            )}
 
-              {selectedElement.notes && (
-                <Section title="Notes">
-                  <p style={{ margin: 0, lineHeight: 1.6 }}>{selectedElement.notes}</p>
-                </Section>
-              )}
+            {/* Category view */}
+            {selectedCategory && CATEGORY_NOTES[selectedCategory] && (
+              <div>
+                <h2 style={{ color: '#00695c', marginTop: 0 }}>{CATEGORY_NOTES[selectedCategory].title}</h2>
+                <p style={{ lineHeight: 1.6, color: '#444' }}>
+                  {CATEGORY_NOTES[selectedCategory].description}
+                </p>
+                <h4 style={{ color: '#00695c', marginTop: '20px' }}>Key Points</h4>
+                <ul style={{ lineHeight: 1.7, paddingLeft: '20px' }}>
+                  {CATEGORY_NOTES[selectedCategory].keyPoints.map((point, i) => (
+                    <li key={i} style={{ marginBottom: '8px' }}>{point}</li>
+                  ))}
+                </ul>
+                <button
+                  onClick={() => {
+                    const firstEl = ELEMENTS.find((e) => e.category === selectedCategory);
+                    if (firstEl) handleElementClick(firstEl);
+                  }}
+                  style={{
+                    marginTop: '20px',
+                    padding: '10px 18px',
+                    background: '#00897b',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Explore an example element →
+                </button>
+              </div>
+            )}
 
-              {selectedElement.uses && (
-                <Section title="Common Uses">
-                  <p style={{ margin: 0, lineHeight: 1.6 }}>{selectedElement.uses}</p>
-                </Section>
-              )}
-            </div>
-          )}
-
-          {/* Category view */}
-          {selectedCategory && CATEGORY_NOTES[selectedCategory] && (
-            <div>
-              <h2 style={{ color: '#00695c', marginTop: 0 }}>{CATEGORY_NOTES[selectedCategory].title}</h2>
-              <p style={{ lineHeight: 1.6, color: '#444' }}>
-                {CATEGORY_NOTES[selectedCategory].description}
-              </p>
-              <h4 style={{ color: '#00695c', marginTop: '20px' }}>Key Points</h4>
-              <ul style={{ lineHeight: 1.7, paddingLeft: '20px' }}>
-                {CATEGORY_NOTES[selectedCategory].keyPoints.map((point, i) => (
-                  <li key={i} style={{ marginBottom: '8px' }}>{point}</li>
-                ))}
-              </ul>
-              <button
-                onClick={() => {
-                  const firstEl = ELEMENTS.find((e) => e.category === selectedCategory);
-                  if (firstEl) handleElementClick(firstEl);
-                }}
-                style={{
-                  marginTop: '20px',
-                  padding: '10px 18px',
-                  background: '#00897b',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                Explore an example element →
-              </button>
-            </div>
-          )}
-
-          {selectedCategory && !CATEGORY_NOTES[selectedCategory] && (
-            <p>No notes available for this category.</p>
-          )}
+            {selectedCategory && !CATEGORY_NOTES[selectedCategory] && (
+              <p>No notes available for this category.</p>
+            )}
+          </div>
         </div>
       )}
 
@@ -358,11 +395,16 @@ const PeriodicTableExplorer: React.FC = () => {
         />
       )}
 
-      {/* Inline animation for slide-in */}
+      {/* Inline animation for slide-in + mobile layout for the info grid */}
       <style>{`
         @keyframes slideIn {
           from { transform: translateX(100%); }
           to   { transform: translateX(0); }
+        }
+        @media (max-width: 640px) {
+          .periodic-info-grid {
+            grid-template-columns: 1fr !important;
+          }
         }
       `}</style>
     </div>
