@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import KetcherEditor from './KetcherEditor';
 import Mol3DViewer from './Mol3DViewer';
-import NMRViewer from './NMRViewer';
+import NMR13CViewer from './NMR13CViewer';
 import EquationBalancer from './EquationBalancer';
 import ChemCalculators from './ChemCalculators';
 import PhysicsCalculators from './PhysicsCalculators';
@@ -166,7 +166,7 @@ function App() {
               )}
 
               {analysis && !analysis.error && analysis.smiles && (
-                <NMRViewer smiles={analysis.smiles} />
+                <NMR13CViewer smiles={analysis.smiles} />
               )}
 
               <div style={panelStyle}>
