@@ -36,7 +36,7 @@ from auth import router as auth_router
 app = FastAPI(
     title="ChemLab Kenya API",
     description="Chemistry API for Kenyan Universities",
-    version="1.7.0"
+    version="1.8.0"
 )
 
 # ============================================================
@@ -267,7 +267,7 @@ def balance_equation_route(equation: str):
 def root():
     return {
         "message": "🧪 ChemLab Kenya API is running!",
-        "version": "1.7.0",
+        "version": "1.8.0",
         "status": "online",
         "auth": "enabled"
     }
@@ -384,44 +384,49 @@ async def compound_by_name(name: str):
 
 
 # ============================================================
-# NMR PREDICTION
+# NMR PREDICTION (csp5 — 1H and 13C)
 # ============================================================
 
-DEPT_LABELS = {"q": "CH3", "t": "CH2", "d": "CH", "s": "C"}
+@app.get("/api/predict_nmr_csp5")
+async def predict_nmr_csp5(smiles: str, nucleus: str = "both"):
+    """
+    Predict 1H and/or 13C NMR using the csp5 package.
+    nucleus: "1H", "13C", or "both" (default).
+    """
+    print(f"🔬 csp5 NMR Prediction: {smiles} ({nucleus})", flush=True)
 
-# NMRdb.org (SPINUS) — free 1H NMR prediction service.
-# NOTE: The API endpoint format should be verified from their site.
-# If it fails, the code falls back to the rule-based estimate below.
+    try:
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            return {"success": False, "error": f"Invalid SMILES string: {smiles}"}
+
+        from csp5 import predict_smiles
+        result = predict_smiles([smiles], nucleus=nucleus)
+
+        # result.predictions is a pandas DataFrame
+        predictions = result.predictions.to_dict(orient="records")
+
+        return {
+            "success": True,
+            "source": "csp5",
+            "nucleus": nucleus,
+            "smiles": smiles,
+            "predictions": predictions,
+            "error": None
+        }
+    except Exception as e:
+        print(f"❌ csp5 prediction error: {e}", flush=True)
+        return {"success": False, "error": str(e)}
+
+
+# ============================================================
+# NMR PREDICTION (NMRdb.org — fallback for 1H)
+# ============================================================
+
 NMRDB_API_URL = "https://nmrdb.org/api/predict/1h"
 
 
-@app.get("/api/test/nmrdb")
-async def test_nmrdb():
-    """Diagnostic endpoint — checks whether Render can reach NMRdb.org."""
-    try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.post(
-                NMRDB_API_URL,
-                json={"smiles": "CCO"},
-                headers={
-                    "Content-Type": "application/json",
-                    "User-Agent": "ChemLab-Kenya/1.0"
-                }
-            )
-            return {
-                "status": response.status_code,
-                "reachable": response.status_code == 200,
-                "body_preview": response.text[:500]
-            }
-    except Exception as e:
-        return {"reachable": False, "error": str(e)}
-
-
 async def try_nmrdb_1h(smiles: str) -> Optional[list]:
-    """
-    Attempt to fetch a real 1H NMR prediction from NMRdb.org.
-    Returns a list of signals if successful, None otherwise.
-    """
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.post(
@@ -437,9 +442,6 @@ async def try_nmrdb_1h(smiles: str) -> Optional[list]:
                 return None
 
             data = response.json()
-            # NMRdb returns a structure with peaks; adapt to our format.
-            # Common fields: "peaks" (list), each with "shift", "mult", "integral".
-            # The exact schema may vary — this covers the common shape.
             peaks = data.get("peaks") or data.get("signals") or []
             signals = []
             for p in peaks:
@@ -481,7 +483,7 @@ async def predict_nmr(smiles: str, nucleus: str = "1H"):
         source = "fallback"
         note = None
 
-        # 1) Try NMRdb.org for 1H
+        # Try NMRdb.org for 1H
         if nucleus == "1H":
             nmrdb_signals = await try_nmrdb_1h(smiles)
             if nmrdb_signals:
@@ -490,7 +492,7 @@ async def predict_nmr(smiles: str, nucleus: str = "1H"):
             else:
                 note = "NMRdb.org didn't return a prediction; using local rule-based estimate."
 
-        # 2) Try nmrshiftdb2 servlet (still there for 13C; likely unreachable)
+        # Try nmrshiftdb2 servlet (likely unreachable)
         if not signals:
             try:
                 canonical_smiles = Chem.MolToSmiles(mol)
@@ -509,7 +511,7 @@ async def predict_nmr(smiles: str, nucleus: str = "1H"):
             except Exception as e:
                 print(f"⚠️ nmrshiftdb2 request failed: {e}", flush=True)
 
-        # 3) Fallback
+        # Fallback
         if not signals:
             signals = get_fallback_nmr_prediction(smiles, nucleus)
             source = "fallback"
