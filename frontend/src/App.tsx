@@ -68,8 +68,6 @@ function App() {
   const [analysis, setAnalysis] = useState<MoleculeData | null>(null);
   const [loading, setLoading] = useState(false);
   const [smilesInput, setSmilesInput] = useState('CCO');
-
-  // ---- Password reset token (from ?reset_token= in URL) ----
   const [resetToken, setResetToken] = useState<string | null>(null);
 
   useEffect(() => {
