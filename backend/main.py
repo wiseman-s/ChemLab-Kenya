@@ -27,16 +27,16 @@ from chemistry.rdkit_renderer import smiles_to_svg
 from chat import chat_with_deepseek, clear_conversation, get_conversation_summary
 
 # ============================================================
-# AUTH IMPORTS (NEW)
+# AUTH IMPORTS
 # ============================================================
 from database import engine, Base
-from auth import models as auth_models  # noqa: F401 — registers models with Base
+from auth import models as auth_models  # noqa: F401
 from auth import router as auth_router
 
 app = FastAPI(
     title="ChemLab Kenya API",
     description="Chemistry API for Kenyan Universities",
-    version="1.6.0"
+    version="1.7.0"
 )
 
 # ============================================================
@@ -54,18 +54,15 @@ app.add_middleware(
         "https://www.chemlab.co.ke",
         "https://chemlab-kenya.onrender.com",
     ],
-    allow_credentials=True,   # ← NEW: required for cookies
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # ============================================================
-# AUTH INITIALIZATION (NEW)
+# AUTH INITIALIZATION
 # ============================================================
-# Create auth tables on startup — idempotent, safe every deploy
 Base.metadata.create_all(bind=engine)
-
-# Register auth routes
 app.include_router(auth_router)
 
 
@@ -101,7 +98,6 @@ class MoleculeResponse(BaseModel):
 
 
 def analyze_molecule(smiles: str) -> dict:
-    """Analyze a molecule from SMILES string using RDKit"""
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
         return {"error": f"Invalid SMILES string: {smiles}"}
@@ -123,12 +119,7 @@ def analyze_molecule(smiles: str) -> dict:
             inchi = None
             inchi_key = None
 
-        violations = sum([
-            mw > 500,
-            logp > 5,
-            h_donors > 5,
-            h_acceptors > 10,
-        ])
+        violations = sum([mw > 500, logp > 5, h_donors > 5, h_acceptors > 10])
 
         return {
             "smiles": smiles,
@@ -165,7 +156,6 @@ def analyze_molecule(smiles: str) -> dict:
 
 
 def parse_chemical_formula(formula: str) -> dict:
-    """Parse a formula like 'Ca(OH)2' or 'Fe2(SO4)3' into {element: count}."""
     formula = formula.strip()
     token_re = re.compile(r'([A-Z][a-z]?|\(|\))(\d*)')
     pos = 0
@@ -215,7 +205,6 @@ def balance_equation(equation: str) -> dict:
 
     all_compounds = reactants + products
     parsed = [parse_chemical_formula(c) for c in all_compounds]
-
     elements = sorted({el for p in parsed for el in p.keys()})
 
     rows = []
@@ -269,8 +258,7 @@ def balance_equation(equation: str) -> dict:
 @app.get("/balance_equation")
 def balance_equation_route(equation: str):
     try:
-        result = balance_equation(equation)
-        return result
+        return balance_equation(equation)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -279,7 +267,7 @@ def balance_equation_route(equation: str):
 def root():
     return {
         "message": "🧪 ChemLab Kenya API is running!",
-        "version": "1.6.0",
+        "version": "1.7.0",
         "status": "online",
         "auth": "enabled"
     }
@@ -315,7 +303,6 @@ def generate_3d(smiles: str):
         AllChem.EmbedMolecule(mol, randomSeed=42)
         AllChem.MMFFOptimizeMolecule(mol)
         molblock = Chem.MolToMolBlock(mol)
-
         return {
             "smiles": smiles,
             "molblock": molblock,
@@ -332,16 +319,12 @@ def health_check():
 
 
 # ============================================================
-# COMPOUND FORMULA SEARCH ENDPOINT
+# COMPOUND FORMULA SEARCH
 # ============================================================
 
 @app.get("/api/compound/formula")
 async def compound_by_formula(formula: str):
-    """
-    Search for compounds by chemical formula.
-    """
     print(f"🧪 Formula search: {formula}")
-
     try:
         from chemistry.formula_search import search_by_formula
         results = await search_by_formula(formula)
@@ -351,7 +334,6 @@ async def compound_by_formula(formula: str):
                 smiles = compound.get("smiles", "")
                 if smiles:
                     compound["structureImage"] = smiles_to_svg(smiles)
-
             return {
                 "formula": formula,
                 "compounds": results,
@@ -367,7 +349,6 @@ async def compound_by_formula(formula: str):
             "providerAvailable": False,
             "error": f"No compounds found for formula: {formula}",
         }
-
     except Exception as e:
         print(f"❌ Error searching formula: {e}")
         return {
@@ -380,56 +361,108 @@ async def compound_by_formula(formula: str):
 
 
 # ============================================================
-# COMPOUND NAME SEARCH ENDPOINT
+# COMPOUND NAME SEARCH
 # ============================================================
 
 @app.get("/api/compound/name")
 async def compound_by_name(name: str):
-    """
-    Search for a compound by name.
-    """
     print(f"🔍 Searching for compound by name: {name}")
-
     try:
         result = await search_compound_by_name(name)
-
         if result:
             smiles = result.get("smiles", "")
             if smiles:
                 result["structureImage"] = smiles_to_svg(smiles)
-
             result.pop("_provider", None)
             result.pop("_cache_hit", None)
-
             return result
 
-        return {
-            "error": f"No compound found for '{name}'",
-            "found": False
-        }
-
+        return {"error": f"No compound found for '{name}'", "found": False}
     except Exception as e:
         print(f"❌ Error searching compound: {e}")
-        return {
-            "error": str(e),
-            "found": False
-        }
+        return {"error": str(e), "found": False}
 
 
 # ============================================================
-# NMR PREDICTION ENDPOINT
+# NMR PREDICTION
 # ============================================================
 
 DEPT_LABELS = {"q": "CH3", "t": "CH2", "d": "CH", "s": "C"}
 
+# NMRdb.org (SPINUS) — free 1H NMR prediction service.
+# NOTE: The API endpoint format should be verified from their site.
+# If it fails, the code falls back to the rule-based estimate below.
+NMRDB_API_URL = "https://nmrdb.org/api/predict/1h"
+
+
+@app.get("/api/test/nmrdb")
+async def test_nmrdb():
+    """Diagnostic endpoint — checks whether Render can reach NMRdb.org."""
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                NMRDB_API_URL,
+                json={"smiles": "CCO"},
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": "ChemLab-Kenya/1.0"
+                }
+            )
+            return {
+                "status": response.status_code,
+                "reachable": response.status_code == 200,
+                "body_preview": response.text[:500]
+            }
+    except Exception as e:
+        return {"reachable": False, "error": str(e)}
+
+
+async def try_nmrdb_1h(smiles: str) -> Optional[list]:
+    """
+    Attempt to fetch a real 1H NMR prediction from NMRdb.org.
+    Returns a list of signals if successful, None otherwise.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.post(
+                NMRDB_API_URL,
+                json={"smiles": smiles},
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": "ChemLab-Kenya/1.0"
+                }
+            )
+            if response.status_code != 200:
+                print(f"⚠️ NMRdb.org returned {response.status_code}", flush=True)
+                return None
+
+            data = response.json()
+            # NMRdb returns a structure with peaks; adapt to our format.
+            # Common fields: "peaks" (list), each with "shift", "mult", "integral".
+            # The exact schema may vary — this covers the common shape.
+            peaks = data.get("peaks") or data.get("signals") or []
+            signals = []
+            for p in peaks:
+                try:
+                    shift = float(p.get("shift") or p.get("ppm") or p.get("value"))
+                except (TypeError, ValueError):
+                    continue
+                signals.append({
+                    "shift": round(shift, 2),
+                    "integral": int(p.get("integral") or p.get("protons") or 1),
+                    "multiplicity": str(p.get("mult") or p.get("multiplicity") or "m").lower()
+                })
+            if signals:
+                signals.sort(key=lambda s: s["shift"], reverse=True)
+                return signals
+            return None
+    except Exception as e:
+        print(f"⚠️ NMRdb.org request failed: {e}", flush=True)
+        return None
+
 
 @app.get("/api/predict_nmr")
 async def predict_nmr(smiles: str, nucleus: str = "1H"):
-    """
-    Predict NMR spectrum using nmrshiftdb2's public search/predict service,
-    with a local RDKit-based rule-of-thumb fallback only if that service is
-    unreachable or returns nothing usable.
-    """
     print(f"🔬 NMR Prediction: {smiles} ({nucleus})")
 
     try:
@@ -444,43 +477,44 @@ async def predict_nmr(smiles: str, nucleus: str = "1H"):
         if mol is None:
             return {"success": False, "error": f"Invalid SMILES string: {smiles}"}
 
-        canonical_smiles = Chem.MolToSmiles(mol)
-        encoded_smiles = urllib.parse.quote(canonical_smiles, safe="")
-
-        nmrshiftdb_url = (
-            "https://nmrshiftdb.nmr.uni-koeln.de/NmrshiftdbServlet/"
-            f"nmrshiftdbaction/searchorpredict/smiles/{encoded_smiles}/spectrumtype/{nucleus}"
-        )
-        headers = {"User-Agent": "ChemLab-Kenya/1.0"}
-
-        response = None
-        request_error = None
-        try:
-            async with httpx.AsyncClient(timeout=20.0) as client:
-                response = await client.get(nmrshiftdb_url, headers=headers)
-        except httpx.RequestError as exc:
-            request_error = str(exc)
-            print(f"⚠️ nmrshiftdb2 request failed: {exc}")
-
         signals = []
         source = "fallback"
         note = None
 
-        if response is not None and response.status_code == 200:
-            signals = parse_nmrshiftdb_response(response.text, nucleus)
-            if signals:
-                source = "nmrshiftdb2"
+        # 1) Try NMRdb.org for 1H
+        if nucleus == "1H":
+            nmrdb_signals = await try_nmrdb_1h(smiles)
+            if nmrdb_signals:
+                signals = nmrdb_signals
+                source = "nmrdb.org"
             else:
-                note = "nmrshiftdb2 returned no usable signals for this structure"
-                print(f"⚠️ {note}")
-        elif response is not None:
-            note = f"nmrshiftdb2 returned status {response.status_code}"
-            print(f"⚠️ {note}")
+                note = "NMRdb.org didn't return a prediction; using local rule-based estimate."
 
+        # 2) Try nmrshiftdb2 servlet (still there for 13C; likely unreachable)
+        if not signals:
+            try:
+                canonical_smiles = Chem.MolToSmiles(mol)
+                encoded_smiles = urllib.parse.quote(canonical_smiles, safe="")
+                nmrshiftdb_url = (
+                    "https://nmrshiftdb.nmr.uni-koeln.de/NmrshiftdbServlet/"
+                    f"nmrshiftdbaction/searchorpredict/smiles/{encoded_smiles}/spectrumtype/{nucleus}"
+                )
+                async with httpx.AsyncClient(timeout=20.0) as client:
+                    r = await client.get(nmrshiftdb_url, headers={"User-Agent": "ChemLab-Kenya/1.0"})
+                if r.status_code == 200:
+                    parsed = parse_nmrshiftdb_response(r.text, nucleus)
+                    if parsed:
+                        signals = parsed
+                        source = "nmrshiftdb2"
+            except Exception as e:
+                print(f"⚠️ nmrshiftdb2 request failed: {e}", flush=True)
+
+        # 3) Fallback
         if not signals:
             signals = get_fallback_nmr_prediction(smiles, nucleus)
             source = "fallback"
-            note = note or request_error
+            if not note:
+                note = "Live NMR services were unreachable. This is an approximate estimate."
 
         return {
             "success": True,
@@ -499,13 +533,10 @@ async def predict_nmr(smiles: str, nucleus: str = "1H"):
 
 
 def parse_nmrshiftdb_response(xml_text: str, nucleus: str) -> list:
-    """Parse nmrshiftdb2's CML/XML spectrum response into our signal format."""
     signals = []
-
     try:
         root = ET.fromstring(xml_text)
-    except ET.ParseError as e:
-        print(f"⚠️ Could not parse nmrshiftdb2 XML: {e}")
+    except ET.ParseError:
         return signals
 
     def local_name(tag: str) -> str:
@@ -514,7 +545,6 @@ def parse_nmrshiftdb_response(xml_text: str, nucleus: str) -> list:
     for elem in root.iter():
         if local_name(elem.tag) != "peak":
             continue
-
         x_value = elem.get("xValue")
         if x_value is None:
             continue
@@ -534,18 +564,13 @@ def parse_nmrshiftdb_response(xml_text: str, nucleus: str) -> list:
             integral = 1
             multiplicity = DEPT_LABELS.get(raw_mult, raw_mult)
 
-        signals.append({
-            "shift": shift,
-            "integral": integral,
-            "multiplicity": multiplicity
-        })
+        signals.append({"shift": shift, "integral": integral, "multiplicity": multiplicity})
 
     signals.sort(key=lambda s: s["shift"], reverse=True)
     return signals
 
 
 def get_fallback_nmr_prediction(smiles: str, nucleus: str = "1H") -> list:
-    """Last-resort rule-based estimate."""
     try:
         mol = Chem.MolFromSmiles(smiles)
         if mol is None:
@@ -554,39 +579,27 @@ def get_fallback_nmr_prediction(smiles: str, nucleus: str = "1H") -> list:
         if nucleus == "1H":
             mol_with_h = Chem.AddHs(mol)
             signals = []
-
             for atom in mol_with_h.GetAtoms():
                 if atom.GetSymbol() == "H":
                     shift = estimate_proton_shift(atom, mol_with_h)
                     if shift > 0:
-                        signals.append({
-                            "shift": round(shift, 2),
-                            "integral": 1,
-                            "multiplicity": "m"
-                        })
-
+                        signals.append({"shift": round(shift, 2), "integral": 1, "multiplicity": "m"})
             if not signals:
                 return get_default_nmr_signals(nucleus)
-
             return group_equivalent_protons(signals)
-
         else:
             return get_default_nmr_signals(nucleus)
-
     except Exception as e:
         print(f"⚠️ Fallback prediction error: {e}")
         return get_default_nmr_signals(nucleus)
 
 
 def estimate_proton_shift(atom, mol) -> float:
-    """Estimate 1H chemical shift based on environment."""
     if atom.GetSymbol() != "H":
         return 0
-
     heavy_neighbors = list(atom.GetNeighbors())
     if not heavy_neighbors:
         return 0
-
     parent = heavy_neighbors[0]
     parent_neighbor_symbols = [n.GetSymbol() for n in parent.GetNeighbors() if n.GetIdx() != atom.GetIdx()]
 
@@ -598,26 +611,20 @@ def estimate_proton_shift(atom, mol) -> float:
         return 3.5 + random.uniform(-0.5, 0.5)
     elif parent.GetSymbol() == "C":
         return 1.5 + random.uniform(-0.3, 0.3)
-    else:
-        return 0
+    return 0
 
 
 def group_equivalent_protons(signals: list) -> list:
-    """Group equivalent proton signals."""
     if not signals:
         return signals
-
     grouped = []
     used = set()
-
     for i, sig in enumerate(signals):
         if i in used:
             continue
-
         group = sig.copy()
         group["integral"] = 1
         group["count"] = 1
-
         for j in range(i + 1, len(signals)):
             if j in used:
                 continue
@@ -626,16 +633,13 @@ def group_equivalent_protons(signals: list) -> list:
                 group["count"] += 1
                 group["integral"] += signals[j]["integral"]
                 group["shift"] = (group["shift"] + signals[j]["shift"]) / 2
-
         used.add(i)
         group["shift"] = round(group["shift"], 2)
         grouped.append(group)
-
     return grouped
 
 
 def get_default_nmr_signals(nucleus: str = "1H") -> list:
-    """Absolute last-resort placeholder signals."""
     if nucleus == "13C":
         return [
             {"shift": 30.00, "integral": 1, "multiplicity": "CH2"},
@@ -650,50 +654,35 @@ def get_default_nmr_signals(nucleus: str = "1H") -> list:
 
 
 # ============================================================
-# CHATBOT ENDPOINTS
+# CHATBOT
 # ============================================================
 
 @app.post("/api/chat")
 async def chat(request: dict):
-    """
-    Send a message to the ChemLab AI assistant.
-    """
     message = request.get("message")
     session_id = request.get("session_id", "default")
-
     if not message:
         return {"success": False, "error": "Message is required"}
-
-    result = chat_with_deepseek(message, session_id)
-    return result
+    return chat_with_deepseek(message, session_id)
 
 
 @app.post("/api/chat/clear")
 async def clear_chat(request: dict):
-    """
-    Clear conversation history.
-    """
     session_id = request.get("session_id", "default")
-    result = clear_conversation(session_id)
-    return result
+    return clear_conversation(session_id)
 
 
 @app.get("/api/chat/history")
 async def chat_history(session_id: str = "default"):
-    """
-    Get conversation history for a session.
-    """
-    result = get_conversation_summary(session_id)
-    return result
+    return get_conversation_summary(session_id)
 
 
 # ============================================================
-# CACHE MANAGEMENT ENDPOINTS
+# CACHE MANAGEMENT
 # ============================================================
 
 @app.get("/api/compound/cache/stats")
 def cache_stats():
-    """Get cache statistics."""
     pubchem_stats = get_cache_stats()
     return {
         "pubchem": pubchem_stats,
@@ -706,7 +695,6 @@ def cache_stats():
 
 @app.post("/api/compound/cache/clear")
 def clear_cache_route():
-    """Clear all caches."""
     clear_cache()
     return {"status": "All caches cleared"}
 
