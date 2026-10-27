@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, Request
 from sqlalchemy.orm import Session
 
 from database import get_db
+from rate_limit import limiter
 from .models import User, PasswordReset
 from .schemas import (
     SignupRequest,
@@ -27,7 +28,7 @@ from .email_service import send_password_reset_email
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 COOKIE_NAME = "chemlab_session"
-COOKIE_MAX_AGE = 60 * 60 * 24 * 7  # 7 days
+COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 
 
 def _set_session_cookie(response: Response, token: str):
@@ -36,14 +37,18 @@ def _set_session_cookie(response: Response, token: str):
         value=token,
         httponly=True,
         secure=True,
-        samesite="none",   # required for cross-origin (Vercel → Render)
+        samesite="none",
         max_age=COOKIE_MAX_AGE,
         path="/",
     )
 
 
+# ============================================================
+# SIGNUP — 3 per minute per IP (prevents spam accounts)
+# ============================================================
 @router.post("/signup", response_model=UserResponse, status_code=201)
-def signup(payload: SignupRequest, response: Response, db: Session = Depends(get_db)):
+@limiter.limit("3/minute")
+def signup(request: Request, payload: SignupRequest, response: Response, db: Session = Depends(get_db)):
     if is_disposable_email(payload.email):
         raise HTTPException(
             status_code=400,
@@ -61,7 +66,7 @@ def signup(payload: SignupRequest, response: Response, db: Session = Depends(get
         email=payload.email.lower(),
         full_name=payload.full_name.strip(),
         hashed_password=hash_password(payload.password),
-        is_verified=True,  # auto-verified for now (email verification next phase)
+        is_verified=True,
     )
     db.add(user)
     db.commit()
@@ -73,11 +78,14 @@ def signup(payload: SignupRequest, response: Response, db: Session = Depends(get
     return user
 
 
+# ============================================================
+# LOGIN — 5 per minute per IP (brute-force protection)
+# ============================================================
 @router.post("/login", response_model=UserResponse)
-def login(payload: LoginRequest, response: Response, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def login(request: Request, payload: LoginRequest, response: Response, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email.lower()).first()
 
-    # Generic error — never reveal whether the email exists
     if not user or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
@@ -114,19 +122,13 @@ def me(request: Request, db: Session = Depends(get_db)):
 
 
 # ============================================================
-# PASSWORD RESET
+# FORGOT PASSWORD — 3 per minute per IP
 # ============================================================
-
 @router.post("/forgot-password")
-def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
-    """
-    Request a password reset email.
-    Limits to 3 requests per email per 24 hours.
-    Always returns the same generic message (no user enumeration).
-    """
+@limiter.limit("3/minute")
+def forgot_password(request: Request, payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email.lower()).first()
 
-    # Always return the same generic message, regardless of outcome
     generic_response = {
         "success": True,
         "message": "If that email is registered, you'll receive a reset link shortly.",
@@ -135,7 +137,6 @@ def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db
     if not user:
         return generic_response
 
-    # ---- Rate limit: 3 requests per email in last 24 hours ----
     twenty_four_hours_ago = datetime.now(timezone.utc) - timedelta(hours=24)
     recent_requests = (
         db.query(PasswordReset)
@@ -147,10 +148,9 @@ def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db
     )
 
     if recent_requests >= 3:
-        print(f"⚠️ Rate limit hit for {user.email} ({recent_requests} requests in 24h)", flush=True)
-        return generic_response  # Still return the generic message — don't reveal the limit
+        print(f"⚠️ Per-email rate limit hit for {user.email}", flush=True)
+        return generic_response
 
-    # Generate token, store hash
     raw_token, token_hash = generate_reset_token()
     reset = PasswordReset(
         user_id=user.id,
@@ -160,17 +160,17 @@ def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db
     db.add(reset)
     db.commit()
 
-    # Send email (fire-and-forget — don't leak failure to the user)
     send_password_reset_email(user.email, raw_token)
 
     return generic_response
 
 
+# ============================================================
+# RESET PASSWORD — 5 per minute per IP
+# ============================================================
 @router.post("/reset-password")
-def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)):
-    """
-    Reset password using a valid token.
-    """
+@limiter.limit("5/minute")
+def reset_password(request: Request, payload: ResetPasswordRequest, db: Session = Depends(get_db)):
     token_hash = hash_token(payload.token)
 
     reset = (
@@ -185,7 +185,6 @@ def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db))
     if not reset:
         raise HTTPException(status_code=400, detail="Invalid or expired reset link.")
 
-    # Check expiry
     now = datetime.now(timezone.utc)
     expires = reset.expires_at
     if expires.tzinfo is None:
@@ -193,12 +192,10 @@ def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db))
     if now > expires:
         raise HTTPException(status_code=400, detail="This reset link has expired. Please request a new one.")
 
-    # Find the user
     user = db.query(User).filter(User.id == reset.user_id).first()
     if not user:
         raise HTTPException(status_code=400, detail="User not found.")
 
-    # Update password, mark token as used
     user.hashed_password = hash_password(payload.new_password)
     reset.used = True
     db.commit()
