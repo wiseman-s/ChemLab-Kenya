@@ -10,19 +10,16 @@ import asyncio
 from typing import Optional, List, Dict, Any
 import json
 import os
+import logging
 from datetime import datetime, timedelta
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from rdkit import Chem
 from rdkit.Chem import Descriptors, rdMolDescriptors, AllChem, QED
 from sympy import Matrix, lcm
-
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
-from rate_limit import limiter
 
 from chemistry.pubchem import search_compound_by_name, clear_cache, get_cache_stats
 from chemistry.rdkit_renderer import smiles_to_svg
@@ -33,15 +30,31 @@ from database import engine, Base
 from auth import models as auth_models  # noqa: F401
 from auth import router as auth_router
 
+logger = logging.getLogger("chemlab")
+
 app = FastAPI(
     title="ChemLab Kenya API",
     description="Chemistry API for Kenyan Universities",
     version="1.9.0"
 )
 
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-app.add_middleware(SlowAPIMiddleware)
+
+# ------------------------------------------------------------
+# Middleware order matters: the LAST one added is the OUTERMOST.
+# 1) catch-all error middleware (inner)
+# 2) CORS (outer) -> so even error responses get CORS headers
+# ------------------------------------------------------------
+@app.middleware("http")
+async def catch_all_errors(request: Request, call_next):
+    try:
+        return await call_next(request)
+    except Exception as e:
+        logger.exception("Unhandled error on %s", request.url)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"{type(e).__name__}: {e}"},
+        )
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -65,21 +78,21 @@ app.include_router(auth_router)
 
 
 # ============================================================
-# HELPERS (unchanged)
+# HELPERS  --> PASTE YOUR REAL FUNCTION BODIES HERE
 # ============================================================
 
 def analyze_molecule(smiles: str) -> dict:
-    # ... (your existing analyze_molecule function — unchanged)
+    # PASTE YOUR EXISTING analyze_molecule BODY HERE
     ...
 
 
 def parse_chemical_formula(formula: str) -> dict:
-    # ... (unchanged)
+    # PASTE YOUR EXISTING BODY HERE
     ...
 
 
 def balance_equation(equation: str) -> dict:
-    # ... (unchanged)
+    # PASTE YOUR EXISTING BODY HERE
     ...
 
 
@@ -88,8 +101,7 @@ def balance_equation(equation: str) -> dict:
 # ============================================================
 
 @app.get("/balance_equation")
-@limiter.limit("20/minute")
-def balance_equation_route(request: Request, equation: str):
+def balance_equation_route(equation: str):
     try:
         return balance_equation(equation)
     except Exception as e:
@@ -107,30 +119,31 @@ def root():
 
 
 @app.get("/analyze", response_model=dict)
-@limiter.limit("20/minute")
-def analyze(request: Request, smiles: str):
+def analyze(smiles: str):
     result = analyze_molecule(smiles)
+    if not result:
+        raise HTTPException(status_code=500, detail="analyze_molecule returned nothing")
     if result.get("error"):
         raise HTTPException(status_code=400, detail=result["error"])
     return result
 
 
 @app.post("/analyze", response_model=dict)
-@limiter.limit("20/minute")
-def analyze_post(request: Request, molecule: dict):
+def analyze_post(molecule: dict):
     smiles = molecule.get("smiles")
     if not smiles:
         raise HTTPException(status_code=400, detail="Missing 'smiles' field in request body")
     result = analyze_molecule(smiles)
+    if not result:
+        raise HTTPException(status_code=500, detail="analyze_molecule returned nothing")
     if result.get("error"):
         raise HTTPException(status_code=400, detail=result["error"])
     return result
 
 
 @app.get("/generate_3d")
-@limiter.limit("15/minute")
-def generate_3d(request: Request, smiles: str):
-    # ... (unchanged)
+def generate_3d(smiles: str):
+    # PASTE YOUR EXISTING generate_3d BODY HERE
     ...
 
 
@@ -140,22 +153,19 @@ def health_check():
 
 
 @app.get("/api/compound/formula")
-@limiter.limit("10/minute")
-async def compound_by_formula(request: Request, formula: str):
-    # ... (unchanged)
+async def compound_by_formula(formula: str):
+    # PASTE YOUR EXISTING BODY HERE
     ...
 
 
 @app.get("/api/compound/name")
-@limiter.limit("10/minute")
-async def compound_by_name(request: Request, name: str):
-    # ... (unchanged)
+async def compound_by_name(name: str):
+    # PASTE YOUR EXISTING BODY HERE
     ...
 
 
 @app.post("/api/chat")
-@limiter.limit("15/minute")
-async def chat(request: Request, body: dict):
+async def chat(body: dict):
     message = body.get("message")
     session_id = body.get("session_id", "default")
     if not message:
@@ -190,11 +200,6 @@ def cache_stats():
 def clear_cache_route():
     clear_cache()
     return {"status": "All caches cleared"}
-
-
-# Removed: /api/predict_nmr and /api/predict_nmr_csp5
-# These were consuming memory on the free tier and never worked reliably.
-# Drug-likeness panel now serves as the "medicine discovery" feature.
 
 
 if __name__ == "__main__":
