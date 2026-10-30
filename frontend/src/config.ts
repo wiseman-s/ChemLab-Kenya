@@ -1,8 +1,6 @@
 // src/config.ts
 
-// In production, call Render directly to avoid Vercel's proxy timeout
-// when the Render free tier is waking up from sleep.
+// In production, use a relative path so Vercel proxies API requests
+// to the Render backend — the browser only ever sees chemlab.co.ke.
 // In local development, hit the local backend directly.
-export const API_URL = import.meta.env.PROD
-  ? 'https://chemlab-kenya.onrender.com'
-  : 'http://localhost:5000';
+export const API_URL = import.meta.env.PROD ? '' : 'http://localhost:5000';
