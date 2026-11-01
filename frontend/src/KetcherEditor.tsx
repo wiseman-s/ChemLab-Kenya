@@ -20,8 +20,6 @@ interface KetcherEditorProps {
   height?: string;
 }
 
-// Increased from 15s to 45s — the Standalone WASM engine is heavy (~10MB)
-// and on school Wi-Fi it regularly exceeds 20-30 seconds on first load.
 const INIT_TIMEOUT_MS = 45000;
 const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
 const ACCEPTED_EXTENSIONS = ['.mol', '.sdf', '.smi', '.txt'];
@@ -61,7 +59,6 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
   const [structProviderError, setStructProviderError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
 
-  // Load ketcher-standalone WASM engine once, on activation.
   useEffect(() => {
     if (!activated || structProvider) return;
 
@@ -84,7 +81,6 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
     };
   }, [activated, structProvider]);
 
-  // Timer to detect "stuck" editor + show progress seconds.
   useEffect(() => {
     if (!activated || ready) {
       if (initTimeoutRef.current) clearTimeout(initTimeoutRef.current);
@@ -296,7 +292,6 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
 
   return (
     <div>
-      {/* Quick-paste bar */}
       <div style={{ display: 'flex', gap: '10px', marginBottom: '15px', flexWrap: 'wrap' }}>
         <input
           type="text"
@@ -357,7 +352,6 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
         Accepts .mol, .sdf, .smi, or .txt files (max {MAX_UPLOAD_BYTES / 1024 / 1024}MB)
       </div>
 
-      {/* Quick examples */}
       <div style={{ marginBottom: '15px' }}>
         <strong style={{ fontSize: '0.9rem' }}>Quick Examples:</strong>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '8px' }}>
