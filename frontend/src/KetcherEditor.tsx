@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback, lazy, Suspense } from 'react';
+import html2canvas from 'html2canvas';
 import 'ketcher-react/dist/index.css';
 
 declare global {
@@ -46,6 +47,7 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
   const ketcherRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const initTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const editorContainerRef = useRef<HTMLDivElement>(null);
 
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -270,6 +272,28 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
     reader.readAsText(file);
   };
 
+  const downloadAsImage = async () => {
+    const canvasElement = editorContainerRef.current;
+    if (!canvasElement) {
+      setError('Could not find the editor canvas.');
+      return;
+    }
+
+    try {
+      const canvas = await html2canvas(canvasElement, {
+        backgroundColor: '#ffffff',
+        scale: 2,
+      });
+      const link = document.createElement('a');
+      link.download = 'chemlab-structure.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (err) {
+      console.error('Download failed:', err);
+      setError('Could not download image. Try using your device screenshot tool.');
+    }
+  };
+
   return (
     <div>
       {/* Quick-paste bar */}
@@ -437,7 +461,10 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
           </div>
         </div>
       ) : (
-        <div style={{ border: '1px solid #ccc', borderRadius: '8px', overflow: 'hidden', height, position: 'relative' }}>
+        <div
+          ref={editorContainerRef}
+          style={{ border: '1px solid #ccc', borderRadius: '8px', overflow: 'hidden', height, position: 'relative' }}
+        >
           <Suspense
             fallback={
               <div style={{
@@ -556,6 +583,21 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
             }}
           >
             Reload Editor
+          </button>
+          <button
+            onClick={downloadAsImage}
+            disabled={!ready}
+            style={{
+              padding: '8px 20px',
+              background: ready ? '#00897b' : '#ccc',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: ready ? 'pointer' : 'not-allowed',
+              touchAction: 'manipulation'
+            }}
+          >
+            Download as Image
           </button>
         </div>
       )}
