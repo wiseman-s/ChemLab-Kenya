@@ -12,6 +12,7 @@
     "postinstall": "node scripts/copy-ketcher-assets.mjs"
   },
   "dependencies": {
+    "html2canvas": "^1.4.1",
     "ketcher-core": "^2.15.0",
     "ketcher-react": "^2.15.0",
     "ketcher-standalone": "^2.15.0",
