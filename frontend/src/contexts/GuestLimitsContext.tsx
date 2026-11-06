@@ -24,7 +24,7 @@ interface GuestLimitsContextValue {
 const GuestLimitsContext = createContext<GuestLimitsContextValue | undefined>(undefined);
 
 export const GuestLimitsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();  // ← pull loading too
   const [showPaywall, setShowPaywall] = useState<LimitedFeature | null>(null);
   const [bannerDismissedState, setBannerDismissedState] = useState(() => getUsage().bannerDismissed);
 
@@ -72,7 +72,10 @@ export const GuestLimitsProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const limit = useCallback((feature: LimitedFeature) => LIMITS[feature], []);
 
-  const showBanner = !user && !bannerDismissedState;
+  // Only show the banner after auth has fully resolved.
+  // Without `!authLoading`, the banner flashes briefly on page load
+  // before getMe() returns the logged-in user.
+  const showBanner = !authLoading && !user && !bannerDismissedState;
 
   return (
     <GuestLimitsContext.Provider
