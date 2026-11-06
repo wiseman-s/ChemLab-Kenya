@@ -376,6 +376,7 @@ const DrugLikenessPanel: React.FC<{ analysis: MoleculeData }> = ({ analysis }) =
     { label: 'Lipinski', status: lipStatus, detail: `${analysis.lipinski_violations} violation${analysis.lipinski_violations === 1 ? '' : 's'}` },
     { label: 'Veber', status: veberStatus, detail: veberStatus === 'pass' ? 'Flexibility and polarity OK' : veberStatus === 'fail' ? 'Fails oral bioavailability test' : 'No data' },
     { label: 'PAINS', status: painsStatus, detail: !pains ? 'No data' : pains.length ? `${pains.length} alert${pains.length === 1 ? '' : 's'}` : 'Clean' },
+    { label: 'Brenk', status: brenkStatus, detail: !brenk ? 'No data' : brenk.length ? `${brenk.length} reactive group${brenk.length === 1 ? '' : 's'}` : 'Clean' },
     { label: 'Synthesis', status: saStatus, detail: hasSA ? `SA ${sa!.toFixed(1)}` : 'No data' },
   ];
   const known = checks.filter((c) => c.status !== 'unknown');
@@ -383,6 +384,8 @@ const DrugLikenessPanel: React.FC<{ analysis: MoleculeData }> = ({ analysis }) =
   const verdict: { title: string; status: Status } =
     known.length === 0
       ? { title: 'Not enough data', status: 'unknown' }
+      : problems === 0 && known.length < checks.length
+      ? { title: 'Incomplete screening', status: 'unknown' }
       : problems === 0
       ? { title: 'Promising candidate', status: 'pass' }
       : problems === 1 && painsStatus !== 'fail'
