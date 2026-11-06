@@ -1,4 +1,5 @@
 import re
+import sys
 import random
 import urllib.parse
 import xml.etree.ElementTree as ET
@@ -16,7 +17,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from rdkit import Chem
-from rdkit.Chem import Descriptors, rdMolDescriptors, AllChem, QED
+from rdkit.Chem import Descriptors, rdMolDescriptors, AllChem, QED, RDConfig
+from rdkit.Chem.FilterCatalog import FilterCatalog, FilterCatalogParams
 from sympy import Matrix, lcm
 
 from slowapi import _rate_limit_exceeded_handler
@@ -64,6 +66,56 @@ Base.metadata.create_all(bind=engine)
 app.include_router(auth_router)
 
 
+# ---------------------------------------------------------------------------
+# Drug-discovery filters: PAINS, Brenk and Synthetic Accessibility (SA) score.
+# Catalogs are built once at startup because loading them is slow.
+# ---------------------------------------------------------------------------
+def _build_catalog(kind) -> FilterCatalog:
+    params = FilterCatalogParams()
+    params.AddCatalog(kind)
+    return FilterCatalog(params)
+
+
+_PAINS_CATALOG = _build_catalog(FilterCatalogParams.FilterCatalogs.PAINS)  # A + B + C
+_BRENK_CATALOG = _build_catalog(FilterCatalogParams.FilterCatalogs.BRENK)  # unwanted groups
+
+
+def _load_sascorer():
+    """
+    Find RDKit's SA scorer. It ships in RDKit's Contrib folder, which pip
+    installs often lack. Fallback: put sascorer.py and fpscores.pkl.gz in
+    backend/SA_Score/ (download from github.com/rdkit/rdkit, Contrib/SA_Score).
+    """
+    candidates = [
+        os.path.join(RDConfig.RDContribDir, "SA_Score"),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "SA_Score"),
+    ]
+    for path in candidates:
+        if os.path.exists(os.path.join(path, "sascorer.py")):
+            sys.path.append(path)
+            try:
+                import sascorer  # type: ignore
+                return sascorer
+            except Exception as err:
+                print(f"SA scorer failed to load from {path}: {err}", flush=True)
+    print("SA scorer not found: sa_score will be null.", flush=True)
+    return None
+
+
+_SASCORER = _load_sascorer()
+
+
+def _catalog_matches(catalog: FilterCatalog, mol) -> List[str]:
+    """Unique alert names matched by a filter catalog, in order found."""
+    seen, names = set(), []
+    for entry in catalog.GetMatches(mol):
+        name = entry.GetDescription()
+        if name not in seen:
+            seen.add(name)
+            names.append(name)
+    return names
+
+
 class MoleculeResponse(BaseModel):
     smiles: str
     canonical_smiles: str
@@ -82,6 +134,7 @@ class MoleculeResponse(BaseModel):
     saturated_rings: int
     aliphatic_rings: int
     fraction_csp3: float
+    fsp3: float
     num_heteroatoms: int
     num_stereocenters: int
     valence_electrons: int
@@ -92,6 +145,10 @@ class MoleculeResponse(BaseModel):
     qed_score: float
     lipinski_violations: int
     lipinski_pass: bool
+    veber_pass: Optional[bool] = None
+    pains_alerts: List[str] = []
+    brenk_alerts: List[str] = []
+    sa_score: Optional[float] = None
     error: Optional[str] = None
 
 
@@ -105,6 +162,9 @@ def analyze_molecule(smiles: str) -> dict:
         logp = round(Descriptors.MolLogP(mol), 3)
         h_donors = Descriptors.NumHDonors(mol)
         h_acceptors = Descriptors.NumHAcceptors(mol)
+        tpsa = round(Descriptors.TPSA(mol), 2)
+        rot_bonds = Descriptors.NumRotatableBonds(mol)
+        fsp3 = round(rdMolDescriptors.CalcFractionCSP3(mol), 3)
 
         stereo_centers = Chem.FindMolChiralCenters(
             mol, includeUnassigned=True, useLegacyImplementation=False
@@ -127,6 +187,27 @@ def analyze_molecule(smiles: str) -> dict:
             print(f"QED calculation failed: {qed_err}", flush=True)
             qed = 0.0
 
+        # Each drug-discovery filter has its own try/except so one failure
+        # (e.g. missing SA files) never breaks the rest of the analysis.
+        try:
+            pains_alerts = _catalog_matches(_PAINS_CATALOG, mol)
+        except Exception as pains_err:
+            print(f"PAINS check failed: {pains_err}", flush=True)
+            pains_alerts = []
+
+        try:
+            brenk_alerts = _catalog_matches(_BRENK_CATALOG, mol)
+        except Exception as brenk_err:
+            print(f"Brenk check failed: {brenk_err}", flush=True)
+            brenk_alerts = []
+
+        sa_score = None
+        if _SASCORER is not None:
+            try:
+                sa_score = round(float(_SASCORER.calculateScore(mol)), 2)
+            except Exception as sa_err:
+                print(f"SA score failed: {sa_err}", flush=True)
+
         return {
             "smiles": smiles,
             "canonical_smiles": Chem.MolToSmiles(mol),
@@ -134,17 +215,18 @@ def analyze_molecule(smiles: str) -> dict:
             "molecular_weight": mw,
             "exact_molecular_weight": round(Descriptors.ExactMolWt(mol), 4),
             "logp": logp,
-            "tpsa": round(Descriptors.TPSA(mol), 2),
+            "tpsa": tpsa,
             "heavy_atoms": Descriptors.HeavyAtomCount(mol),
             "h_bond_donors": h_donors,
             "h_bond_acceptors": h_acceptors,
             "num_atoms": mol.GetNumAtoms(),
-            "rotatable_bonds": Descriptors.NumRotatableBonds(mol),
+            "rotatable_bonds": rot_bonds,
             "ring_count": rdMolDescriptors.CalcNumRings(mol),
             "aromatic_rings": rdMolDescriptors.CalcNumAromaticRings(mol),
             "saturated_rings": rdMolDescriptors.CalcNumSaturatedRings(mol),
             "aliphatic_rings": rdMolDescriptors.CalcNumAliphaticRings(mol),
-            "fraction_csp3": round(rdMolDescriptors.CalcFractionCSP3(mol), 3),
+            "fraction_csp3": fsp3,
+            "fsp3": fsp3,  # name the DrugLikenessPanel reads
             "num_heteroatoms": rdMolDescriptors.CalcNumHeteroatoms(mol),
             "num_stereocenters": len(stereo_centers),
             "valence_electrons": Descriptors.NumValenceElectrons(mol),
@@ -155,6 +237,10 @@ def analyze_molecule(smiles: str) -> dict:
             "qed_score": qed,
             "lipinski_violations": violations,
             "lipinski_pass": violations <= 1,
+            "veber_pass": rot_bonds <= 10 and tpsa <= 140,
+            "pains_alerts": pains_alerts,
+            "brenk_alerts": brenk_alerts,
+            "sa_score": sa_score,
             "error": None
         }
     except Exception as e:
@@ -326,7 +412,12 @@ def generate_3d(request: Request, smiles: str):
 
 @app.get("/health")
 def health_check():
-    return {"status": "healthy", "rdkit": "loaded", "auth": "loaded"}
+    return {
+        "status": "healthy",
+        "rdkit": "loaded",
+        "auth": "loaded",
+        "sa_scorer": _SASCORER is not None,
+    }
 
 
 @app.get("/api/compound/formula")
