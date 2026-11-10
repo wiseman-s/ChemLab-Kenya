@@ -1,255 +1,55 @@
-:root {
-  --text: #374151;
-  --text-light: #6b7280;
-  --text-h: #064e3b;
+/* frontend/src/index.css */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import './styles/theme.css';
 
-  --bg: #ffffff;
-  --bg-soft: #f8fafc;
-  --bg-card: #ffffff;
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
 
-  --border: #e5e7eb;
-  --border-focus: #00897b;
-
-  --primary: #00897b;
-  --primary-dark: #00695c;
-  --primary-light: #e0f2f1;
-
-  --code-bg: #f4f4f5;
-
-  --shadow:
-    0 4px 12px rgba(0, 0, 0, 0.08);
-
-  --sans:
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    Roboto,
-    Arial,
-    sans-serif;
-
-  --heading:
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    Roboto,
-    Arial,
-    sans-serif;
-
-  --mono:
-    ui-monospace,
-    SFMono-Regular,
-    Consolas,
-    "Liberation Mono",
-    monospace;
-
-  font-family: var(--sans);
-  font-size: 16px;
-  line-height: 1.5;
-  font-weight: 400;
-
-  color: var(--text);
-  background: var(--bg);
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
+html, body {
+  font-family: var(--font-sans);
+  background: var(--color-bg);
+  color: var(--color-text);
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Global box sizing */
-
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
-
-/* Page */
-
-html {
-  min-width: 320px;
-  min-height: 100%;
-}
-
 body {
-  margin: 0;
-  min-width: 320px;
   min-height: 100vh;
-  background: var(--bg-soft);
-  color: var(--text);
 }
 
-/* Root application */
-
-#root {
-  width: 100%;
-  max-width: 1200px;
-  min-height: 100vh;
-  margin: 0 auto;
-  background: var(--bg);
-}
-
-/* Typography */
-
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-  font-family: var(--heading);
-  color: var(--text-h);
-}
-
-h1 {
-  font-size: 42px;
-  line-height: 1.15;
+h1, h2, h3, h4, h5, h6 {
   font-weight: 600;
-  letter-spacing: -1px;
-  margin: 24px 0;
-}
-
-h2 {
-  font-size: 28px;
-  line-height: 1.2;
-  font-weight: 600;
-  margin: 0 0 12px;
-}
-
-h3 {
-  font-size: 22px;
   line-height: 1.3;
-  font-weight: 600;
+  color: var(--color-text);
 }
 
-h4 {
-  font-size: 18px;
-  line-height: 1.4;
-}
-
-p {
-  margin: 0 0 12px;
-}
-
-/* Links */
-
-a {
-  color: var(--primary-dark);
-  font-weight: 500;
-  text-decoration: none;
-}
-
-a:hover {
-  text-decoration: underline;
-}
-
-/* Buttons */
+h1 { font-size: 1.875rem; }
+h2 { font-size: 1.5rem; }
+h3 { font-size: 1.25rem; }
+h4 { font-size: 1.125rem; }
 
 button {
   font-family: inherit;
+  transition: all 0.15s ease;
 }
 
-/* Inputs */
+button:not(:disabled):hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
 
-input,
-select,
-textarea {
+button:not(:disabled):active {
+  transform: translateY(0);
+}
+
+input, select, textarea {
   font-family: inherit;
-  box-sizing: border-box;
 }
 
-input:focus,
-select:focus,
-textarea:focus {
-  outline: none;
-}
-
-/* Code */
-
-code,
-pre,
-.counter {
-  font-family: var(--mono);
-}
-
-code {
-  display: inline-flex;
-  padding: 3px 7px;
-  border-radius: 4px;
-  background: var(--code-bg);
-  color: var(--text-h);
-  font-size: 14px;
-}
-
-pre {
-  overflow-x: auto;
-  padding: 16px;
-  border-radius: 8px;
-  background: var(--code-bg);
-}
-
-/* Images */
-
-img {
-  max-width: 100%;
-}
-
-/* Scrollbars */
-
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: #f1f5f9;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-
-/* Tablet */
-
-@media (max-width: 1024px) {
-  :root {
-    font-size: 16px;
-  }
-
-  #root {
-    max-width: 100%;
-  }
-
-  h1 {
-    font-size: 36px;
-    margin: 20px 0;
-  }
-
-  h2 {
-    font-size: 24px;
-  }
-}
-
-/* Mobile */
-
-@media (max-width: 640px) {
-  h1 {
-    font-size: 30px;
-    letter-spacing: -0.5px;
-  }
-
-  h2 {
-    font-size: 22px;
-  }
-
-  h3 {
-    font-size: 19px;
-  }
+code, pre {
+  font-family: var(--font-mono);
 }
