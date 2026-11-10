@@ -51,17 +51,6 @@ type Section = 'analyzer' | 'balancer' | 'calculators' | 'periodic' | 'compound'
 
 const cardStyle: React.CSSProperties = { background: 'white', padding: '10px', borderRadius: '4px' };
 const sectionHeaderStyle: React.CSSProperties = { color: '#00695c', marginTop: '20px', marginBottom: '10px' };
-const navBtnStyle = (active: boolean): React.CSSProperties => ({
-  padding: '12px 20px',
-  border: 'none',
-  borderBottom: active ? '3px solid #00897b' : '3px solid transparent',
-  background: 'transparent',
-  color: active ? '#00897b' : '#666',
-  fontWeight: active ? 700 : 500,
-  cursor: 'pointer',
-  fontSize: '15px',
-});
-const panelStyle: React.CSSProperties = { padding: '20px', background: '#f5f5f5', borderRadius: '8px' };
 
 function App() {
   const [section, setSection] = useState<Section>('analyzer');
@@ -123,38 +112,46 @@ function App() {
 
   return (
     <div className="App">
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+      <header className="app-header">
         <div>
           <h1>ChemLab Kenya</h1>
           <p>Chemistry and Physics Software for Kenyan Schools and Universities</p>
         </div>
-        <div style={{ marginTop: '10px' }}>
-          <UserMenu />
-        </div>
+        <UserMenu />
       </header>
 
-      <nav style={{ display: 'flex', borderBottom: '2px solid #ddd', marginBottom: '20px', flexWrap: 'wrap' }}>
-        <button style={navBtnStyle(section === 'analyzer')} onClick={() => setSection('analyzer')}>Molecule Analyzer</button>
-        <button style={navBtnStyle(section === 'balancer')} onClick={() => setSection('balancer')}>Equation Balancer</button>
-        <button style={navBtnStyle(section === 'calculators')} onClick={() => setSection('calculators')}>Chem Calculators</button>
-        <button style={navBtnStyle(section === 'periodic')} onClick={() => setSection('periodic')}>Periodic Table</button>
-        <button style={navBtnStyle(section === 'compound')} onClick={() => setSection('compound')}>Compound Explorer</button>
-        <button style={navBtnStyle(section === 'physics')} onClick={() => setSection('physics')}>Physics Calculators</button>
+      <nav className="app-nav">
+        <button className={section === 'analyzer' ? 'active' : ''} onClick={() => setSection('analyzer')}>
+          Molecule Analyzer
+        </button>
+        <button className={section === 'balancer' ? 'active' : ''} onClick={() => setSection('balancer')}>
+          Equation Balancer
+        </button>
+        <button className={section === 'calculators' ? 'active' : ''} onClick={() => setSection('calculators')}>
+          Chem Calculators
+        </button>
+        <button className={section === 'periodic' ? 'active' : ''} onClick={() => setSection('periodic')}>
+          Periodic Table
+        </button>
+        <button className={section === 'compound' ? 'active' : ''} onClick={() => setSection('compound')}>
+          Compound Explorer
+        </button>
+        <button className={section === 'physics' ? 'active' : ''} onClick={() => setSection('physics')}>
+          Physics Calculators
+        </button>
       </nav>
 
-      <main>
+      <main className="app-main">
         {section === 'analyzer' && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-            <div>
-              <h3>Molecular Editor</h3>
+            <div className="card">
+              <h3 className="card-title">Molecular Editor</h3>
               <KetcherEditor />
               {loading && <div style={{ marginTop: '10px', color: '#666', fontSize: '0.9rem' }}>Analyzing...</div>}
             </div>
 
-            <div>
-              <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
-                <h3>Analysis Results</h3>
-              </div>
+            <div className="card">
+              <h3 className="card-title">Analysis Results</h3>
 
               {analysis && !analysis.error && analysis.smiles && (
                 <div style={{ marginBottom: '15px' }}>
@@ -163,7 +160,7 @@ function App() {
                 </div>
               )}
 
-              <div style={panelStyle}>
+              <div>
                 {analysis ? (
                   analysis.error ? (
                     <div style={{ color: '#d32f2f' }}>
@@ -231,35 +228,35 @@ function App() {
         {section === 'balancer' && (
           <div>
             <h3>Chemical Equation Balancer</h3>
-            <div style={panelStyle}><EquationBalancer /></div>
+            <div className="card"><EquationBalancer /></div>
           </div>
         )}
 
         {section === 'calculators' && (
           <div>
             <h3>Chemistry Calculators</h3>
-            <div style={panelStyle}><ChemCalculators /></div>
+            <div className="card"><ChemCalculators /></div>
           </div>
         )}
 
         {section === 'periodic' && (
           <div>
             <h3>Periodic Table Explorer</h3>
-            <div style={panelStyle}><PeriodicTableExplorer /></div>
+            <div className="card"><PeriodicTableExplorer /></div>
           </div>
         )}
 
         {section === 'compound' && (
           <div>
             <h3>Compound Explorer</h3>
-            <div style={panelStyle}><CompoundExplorer /></div>
+            <div className="card"><CompoundExplorer /></div>
           </div>
         )}
 
         {section === 'physics' && (
           <div>
             <h3>Physics Calculators</h3>
-            <div style={panelStyle}><PhysicsCalculators /></div>
+            <div className="card"><PhysicsCalculators /></div>
           </div>
         )}
 
@@ -276,8 +273,8 @@ function App() {
         </div>
       </main>
 
-      <footer style={{ textAlign: 'center', padding: '20px', marginTop: '20px', color: '#666', fontSize: '0.85rem' }}>
-        © ChemLab Kenya 2026
+      <footer className="app-footer">
+        ChemLab Kenya 2026
       </footer>
 
       <ChatBot />
