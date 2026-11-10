@@ -1,130 +1,182 @@
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
-body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-    background: #f0f4f8;
-}
+/* frontend/src/App.css */
+
 .App {
-    max-width: 1600px;
-    margin: 0 auto;
-    padding: 20px;
-}
-header {
-    background: linear-gradient(135deg, #00695c, #00897b);
-    color: white;
-    padding: 30px 40px;
-    border-radius: 12px;
-    margin-bottom: 30px;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-}
-header h1 {
-    font-size: 2.5rem;
-    margin-bottom: 10px;
-}
-header p {
-    font-size: 1.1rem;
-    opacity: 0.9;
-}
-h3 {
-    margin-bottom: 15px;
-    color: #00695c;
-}
-h4 {
-    color: #00695c;
-}
-main {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-}
-button {
-    cursor: pointer;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
 }
 
-/* Nav tabs: horizontal scroll strip instead of wrapping, so it stays
-   tidy at any width instead of breaking into uneven rows. */
-nav {
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
-}
-nav::-webkit-scrollbar {
-    height: 4px;
-}
-nav::-webkit-scrollbar-thumb {
-    background: #cfd8dc;
-    border-radius: 4px;
-}
-
-@media (max-width: 1024px) {
-    .App {
-        padding: 10px;
-    }
-
-    header h1 {
-        font-size: 1.8rem;
-    }
-
-    /* Collapse ANY inline grid (analyzer layout, property card grids,
-       etc.) to a single column, regardless of how deeply it's nested.
-       These grids are set as inline styles in App.tsx rather than CSS
-       classes, so we match on the style attribute itself. */
-    [style*="grid-template-columns"] {
-        grid-template-columns: 1fr !important;
-    }
+/* ---------- Header ---------- */
+.app-header {
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-lg) var(--space-xl);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  box-shadow: var(--shadow-sm);
+  position: sticky;
+  top: 0;
+  z-index: 100;
 }
 
-@media (max-width: 768px) {
-    header {
-        padding: 20px;
-    }
-
-    header h1 {
-        font-size: 1.5rem;
-    }
-
-    header p {
-        font-size: 0.95rem;
-    }
-
-    /* Scrollable single-row tab strip instead of wrapping into a
-       ragged multi-line block on narrow screens. */
-    nav {
-        flex-wrap: nowrap !important;
-        overflow-x: auto;
-        justify-content: flex-start;
-    }
-
-    nav button {
-        padding: 10px 14px !important;
-        font-size: 13px !important;
-        white-space: nowrap;
-        flex-shrink: 0;
-    }
+.app-header h1 {
+  color: var(--color-primary-dark);
+  font-size: 1.5rem;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
 }
 
-@media (max-width: 480px) {
-    .App {
-        padding: 8px;
-    }
+.app-header p {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  margin: 4px 0 0;
+}
 
-    header {
-        padding: 16px;
-        border-radius: 8px;
-    }
+/* ---------- Navigation ---------- */
+.app-nav {
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  padding: 0 var(--space-xl);
+  display: flex;
+  gap: var(--space-xs);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
 
-    header h1 {
-        font-size: 1.3rem;
-    }
+.app-nav::-webkit-scrollbar {
+  display: none;
+}
 
-    header p {
-        font-size: 0.85rem;
-    }
+.app-nav button {
+  padding: var(--space-md) var(--space-lg);
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+  font-size: 0.9375rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  position: relative;
+}
 
-    nav button {
-        padding: 8px 12px !important;
-        font-size: 12px !important;
-    }
+.app-nav button:hover {
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+}
+
+.app-nav button.active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+  font-weight: 600;
+}
+
+/* ---------- Main ---------- */
+.app-main {
+  flex: 1;
+  padding: var(--space-xl);
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* ---------- Cards ---------- */
+.card {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-lg);
+  margin-bottom: var(--space-lg);
+  border: 1px solid var(--color-border);
+}
+
+.card-title {
+  color: var(--color-primary-dark);
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0 0 var(--space-md) 0;
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--color-border);
+}
+
+/* ---------- Buttons ---------- */
+.btn {
+  padding: 10px 20px;
+  border-radius: var(--radius-sm);
+  border: none;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: var(--color-primary-dark);
+}
+
+.btn-secondary {
+  background: var(--color-primary-light);
+  color: var(--color-primary-dark);
+}
+
+.btn-secondary:hover {
+  background: var(--color-primary);
+  color: white;
+}
+
+.btn-outline {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+.btn-outline:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+/* ---------- Footer ---------- */
+.app-footer {
+  text-align: center;
+  padding: var(--space-lg);
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+  border-top: 1px solid var(--color-border);
+  margin-top: var(--space-xl);
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 640px) {
+  .app-header {
+    padding: var(--space-md);
+  }
+
+  .app-header h1 {
+    font-size: 1.25rem;
+  }
+
+  .app-nav {
+    padding: 0 var(--space-md);
+  }
+
+  .app-nav button {
+    padding: var(--space-md) var(--space-sm);
+    font-size: 0.875rem;
+  }
+
+  .app-main {
+    padding: var(--space-md);
+  }
 }
