@@ -47,10 +47,25 @@ interface MoleculeData {
   error?: string;
 }
 
-type Section = 'analyzer' | 'balancer' | 'calculators' | 'periodic' | 'compound' | 'physics';
+type Section =
+  | 'analyzer'
+  | 'balancer'
+  | 'calculators'
+  | 'periodic'
+  | 'compound'
+  | 'physics';
 
-const cardStyle: React.CSSProperties = { background: 'white', padding: '10px', borderRadius: '4px' };
-const sectionHeaderStyle: React.CSSProperties = { color: '#00695c', marginTop: '20px', marginBottom: '10px' };
+const cardStyle: React.CSSProperties = {
+  background: 'white',
+  padding: '10px',
+  borderRadius: '4px'
+};
+
+const sectionHeaderStyle: React.CSSProperties = {
+  color: '#00695c',
+  marginTop: '20px',
+  marginBottom: '10px'
+};
 
 function App() {
   const [section, setSection] = useState<Section>('analyzer');
@@ -62,7 +77,10 @@ function App() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get('reset_token');
-    if (token) setResetToken(token);
+
+    if (token) {
+      setResetToken(token);
+    }
   }, []);
 
   const { tryUse, showPaywall, closePaywall } = useGuestLimits();
@@ -76,14 +94,25 @@ function App() {
     if (!tryUse('analyze')) return;
 
     setLoading(true);
+
     try {
-      const response = await fetch(`${API_URL}/analyze?smiles=${encodeURIComponent(smiles)}`);
+      const response = await fetch(
+        `${API_URL}/analyze?smiles=${encodeURIComponent(smiles)}`
+      );
+
       const data = await response.json();
+
       setAnalysis(data);
-      if (data.error) console.error('Analysis error:', data.error);
+
+      if (data.error) {
+        console.error('Analysis error:', data.error);
+      }
     } catch (error) {
       console.error('Error analyzing molecule:', error);
-      setAnalysis({ error: "Failed to connect to backend." } as MoleculeData);
+
+      setAnalysis({
+        error: 'Failed to connect to backend.'
+      } as MoleculeData);
     } finally {
       setLoading(false);
     }
@@ -93,12 +122,21 @@ function App() {
     const handleSmilesUpdate = (event: Event) => {
       const customEvent = event as CustomEvent;
       const newSmiles = customEvent.detail;
+
       setSmilesInput(newSmiles);
       analyzeMolecule(newSmiles);
     };
-    window.addEventListener('smilesUpdated', handleSmilesUpdate as EventListener);
+
+    window.addEventListener(
+      'smilesUpdated',
+      handleSmilesUpdate as EventListener
+    );
+
     return () => {
-      window.removeEventListener('smilesUpdated', handleSmilesUpdate as EventListener);
+      window.removeEventListener(
+        'smilesUpdated',
+        handleSmilesUpdate as EventListener
+      );
     };
   }, []);
 
@@ -112,51 +150,104 @@ function App() {
 
   return (
     <div className="App">
+
+      {/* ---------- Header ---------- */}
       <header className="app-header">
         <div>
           <h1>ChemLab Kenya</h1>
-          <p>Chemistry and Physics Software for Kenyan Schools and Universities</p>
+          <p>
+            Chemistry and Physics Software for Kenyan Schools and Universities
+          </p>
         </div>
+
         <UserMenu />
       </header>
 
+      {/* ---------- Navigation ---------- */}
       <nav className="app-nav">
-        <button className={section === 'analyzer' ? 'active' : ''} onClick={() => setSection('analyzer')}>
+
+        <button
+          className={section === 'analyzer' ? 'active' : ''}
+          onClick={() => setSection('analyzer')}
+        >
           Molecule Analyzer
         </button>
-        <button className={section === 'balancer' ? 'active' : ''} onClick={() => setSection('balancer')}>
+
+        <button
+          className={section === 'balancer' ? 'active' : ''}
+          onClick={() => setSection('balancer')}
+        >
           Equation Balancer
         </button>
-        <button className={section === 'calculators' ? 'active' : ''} onClick={() => setSection('calculators')}>
+
+        <button
+          className={section === 'calculators' ? 'active' : ''}
+          onClick={() => setSection('calculators')}
+        >
           Chem Calculators
         </button>
-        <button className={section === 'periodic' ? 'active' : ''} onClick={() => setSection('periodic')}>
+
+        <button
+          className={section === 'periodic' ? 'active' : ''}
+          onClick={() => setSection('periodic')}
+        >
           Periodic Table
         </button>
-        <button className={section === 'compound' ? 'active' : ''} onClick={() => setSection('compound')}>
+
+        <button
+          className={section === 'compound' ? 'active' : ''}
+          onClick={() => setSection('compound')}
+        >
           Compound Explorer
         </button>
-        <button className={section === 'physics' ? 'active' : ''} onClick={() => setSection('physics')}>
+
+        <button
+          className={section === 'physics' ? 'active' : ''}
+          onClick={() => setSection('physics')}
+        >
           Physics Calculators
         </button>
+
       </nav>
 
+      {/* ---------- Main Content ---------- */}
       <main className="app-main">
+
+        {/* ---------- Molecule Analyzer ---------- */}
         {section === 'analyzer' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+          <div className="analyzer-grid">
+
+            {/* Molecular Editor */}
             <div className="card">
               <h3 className="card-title">Molecular Editor</h3>
+
               <KetcherEditor />
-              {loading && <div style={{ marginTop: '10px', color: '#666', fontSize: '0.9rem' }}>Analyzing...</div>}
+
+              {loading && (
+                <div
+                  style={{
+                    marginTop: '10px',
+                    color: '#666',
+                    fontSize: '0.9rem'
+                  }}
+                >
+                  Analyzing...
+                </div>
+              )}
             </div>
 
+            {/* Analysis Results */}
             <div className="card">
               <h3 className="card-title">Analysis Results</h3>
 
               {analysis && !analysis.error && analysis.smiles && (
                 <div style={{ marginBottom: '15px' }}>
                   <h4>3D Structure</h4>
-                  <Mol3DViewer smiles={analysis.smiles} height="300px" />
+
+                  <Mol3DViewer
+                    smiles={analysis.smiles}
+                    height="300px"
+                  />
                 </div>
               )}
 
@@ -168,102 +259,334 @@ function App() {
                     </div>
                   ) : (
                     <div>
-                      <h4 style={{ color: '#00695c', marginBottom: '15px' }}>{analysis.formula}</h4>
 
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                        <div style={cardStyle}><strong>SMILES</strong><div style={{ fontSize: '0.9rem', wordBreak: 'break-all' }}>{analysis.smiles}</div></div>
-                        <div style={cardStyle}><strong>Canonical SMILES</strong><div style={{ fontSize: '0.9rem', wordBreak: 'break-all' }}>{analysis.canonical_smiles}</div></div>
-                        <div style={cardStyle}><strong>Molecular Weight</strong><div>{analysis.molecular_weight} g/mol</div></div>
-                        <div style={cardStyle}><strong>Exact Mass</strong><div>{analysis.exact_molecular_weight} g/mol</div></div>
-                        <div style={cardStyle}><strong>LogP</strong><div>{analysis.logp}</div></div>
-                        <div style={cardStyle}><strong>TPSA</strong><div>{analysis.tpsa} Å²</div></div>
-                        <div style={cardStyle}><strong>Heavy Atoms</strong><div>{analysis.heavy_atoms}</div></div>
-                        <div style={cardStyle}><strong>H-Bond Donors</strong><div>{analysis.h_bond_donors}</div></div>
-                        <div style={cardStyle}><strong>H-Bond Acceptors</strong><div>{analysis.h_bond_acceptors}</div></div>
-                      </div>
+                      <h4
+                        style={{
+                          color: '#00695c',
+                          marginBottom: '15px'
+                        }}
+                      >
+                        {analysis.formula}
+                      </h4>
 
-                      <h4 style={sectionHeaderStyle}>Structural Properties</h4>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                        <div style={cardStyle}><strong>Rotatable Bonds</strong><div>{analysis.rotatable_bonds}</div></div>
-                        <div style={cardStyle}><strong>Ring Count</strong><div>{analysis.ring_count}</div></div>
-                        <div style={cardStyle}><strong>Aromatic Rings</strong><div>{analysis.aromatic_rings}</div></div>
-                        <div style={cardStyle}><strong>Saturated Rings</strong><div>{analysis.saturated_rings}</div></div>
-                        <div style={cardStyle}><strong>Aliphatic Rings</strong><div>{analysis.aliphatic_rings}</div></div>
-                        <div style={cardStyle}><strong>Fraction Csp3</strong><div>{analysis.fraction_csp3}</div></div>
-                        <div style={cardStyle}><strong>Heteroatoms</strong><div>{analysis.num_heteroatoms}</div></div>
-                        <div style={cardStyle}><strong>Stereocenters</strong><div>{analysis.num_stereocenters}</div></div>
-                        <div style={cardStyle}><strong>Valence Electrons</strong><div>{analysis.valence_electrons}</div></div>
-                        <div style={cardStyle}><strong>Formal Charge</strong><div>{analysis.formal_charge}</div></div>
-                        <div style={cardStyle}><strong>Molar Refractivity</strong><div>{analysis.molar_refractivity}</div></div>
-                      </div>
+                      {/* Basic Molecular Properties */}
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr 1fr',
+                          gap: '10px'
+                        }}
+                      >
+                        <div style={cardStyle}>
+                          <strong>SMILES</strong>
+                          <div
+                            style={{
+                              fontSize: '0.9rem',
+                              wordBreak: 'break-all'
+                            }}
+                          >
+                            {analysis.smiles}
+                          </div>
+                        </div>
 
-                      <h4 style={sectionHeaderStyle}>Identifiers</h4>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px' }}>
-                        <div style={cardStyle}><strong>InChI</strong><div style={{ fontSize: '0.85rem', wordBreak: 'break-all', fontFamily: 'monospace' }}>{analysis.inchi || 'Not available'}</div></div>
-                        <div style={cardStyle}><strong>InChIKey</strong><div style={{ fontSize: '0.9rem', fontFamily: 'monospace' }}>{analysis.inchi_key || 'Not available'}</div></div>
-                      </div>
+                        <div style={cardStyle}>
+                          <strong>Canonical SMILES</strong>
+                          <div
+                            style={{
+                              fontSize: '0.9rem',
+                              wordBreak: 'break-all'
+                            }}
+                          >
+                            {analysis.canonical_smiles}
+                          </div>
+                        </div>
 
-                      <h4 style={sectionHeaderStyle}>Drug-likeness</h4>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                        <div style={cardStyle}><strong>QED Score</strong><div>{analysis.qed_score} <span style={{ fontSize: '0.8rem', color: '#666' }}>(0-1, higher = more drug-like)</span></div></div>
-                        <div style={{ ...cardStyle, background: analysis.lipinski_pass ? '#e8f5e9' : '#fff3e0' }}>
-                          <strong>Lipinski's Rule of 5</strong>
-                          <div>{analysis.lipinski_pass ? 'Pass' : 'Fail'} ({analysis.lipinski_violations} violation{analysis.lipinski_violations !== 1 ? 's' : ''})</div>
+                        <div style={cardStyle}>
+                          <strong>Molecular Weight</strong>
+                          <div>{analysis.molecular_weight} g/mol</div>
+                        </div>
+
+                        <div style={cardStyle}>
+                          <strong>Exact Mass</strong>
+                          <div>{analysis.exact_molecular_weight} g/mol</div>
+                        </div>
+
+                        <div style={cardStyle}>
+                          <strong>LogP</strong>
+                          <div>{analysis.logp}</div>
+                        </div>
+
+                        <div style={cardStyle}>
+                          <strong>TPSA</strong>
+                          <div>{analysis.tpsa} Å²</div>
+                        </div>
+
+                        <div style={cardStyle}>
+                          <strong>Heavy Atoms</strong>
+                          <div>{analysis.heavy_atoms}</div>
+                        </div>
+
+                        <div style={cardStyle}>
+                          <strong>H-Bond Donors</strong>
+                          <div>{analysis.h_bond_donors}</div>
+                        </div>
+
+                        <div style={cardStyle}>
+                          <strong>H-Bond Acceptors</strong>
+                          <div>{analysis.h_bond_acceptors}</div>
                         </div>
                       </div>
+
+                      {/* Structural Properties */}
+                      <h4 style={sectionHeaderStyle}>
+                        Structural Properties
+                      </h4>
+
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr 1fr',
+                          gap: '10px'
+                        }}
+                      >
+                        <div style={cardStyle}>
+                          <strong>Rotatable Bonds</strong>
+                          <div>{analysis.rotatable_bonds}</div>
+                        </div>
+
+                        <div style={cardStyle}>
+                          <strong>Ring Count</strong>
+                          <div>{analysis.ring_count}</div>
+                        </div>
+
+                        <div style={cardStyle}>
+                          <strong>Aromatic Rings</strong>
+                          <div>{analysis.aromatic_rings}</div>
+                        </div>
+
+                        <div style={cardStyle}>
+                          <strong>Saturated Rings</strong>
+                          <div>{analysis.saturated_rings}</div>
+                        </div>
+
+                        <div style={cardStyle}>
+                          <strong>Aliphatic Rings</strong>
+                          <div>{analysis.aliphatic_rings}</div>
+                        </div>
+
+                        <div style={cardStyle}>
+                          <strong>Fraction Csp3</strong>
+                          <div>{analysis.fraction_csp3}</div>
+                        </div>
+
+                        <div style={cardStyle}>
+                          <strong>Heteroatoms</strong>
+                          <div>{analysis.num_heteroatoms}</div>
+                        </div>
+
+                        <div style={cardStyle}>
+                          <strong>Stereocenters</strong>
+                          <div>{analysis.num_stereocenters}</div>
+                        </div>
+
+                        <div style={cardStyle}>
+                          <strong>Valence Electrons</strong>
+                          <div>{analysis.valence_electrons}</div>
+                        </div>
+
+                        <div style={cardStyle}>
+                          <strong>Formal Charge</strong>
+                          <div>{analysis.formal_charge}</div>
+                        </div>
+
+                        <div style={cardStyle}>
+                          <strong>Molar Refractivity</strong>
+                          <div>{analysis.molar_refractivity}</div>
+                        </div>
+                      </div>
+
+                      {/* Chemical Identifiers */}
+                      <h4 style={sectionHeaderStyle}>
+                        Identifiers
+                      </h4>
+
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr',
+                          gap: '10px'
+                        }}
+                      >
+                        <div style={cardStyle}>
+                          <strong>InChI</strong>
+
+                          <div
+                            style={{
+                              fontSize: '0.85rem',
+                              wordBreak: 'break-all',
+                              fontFamily: 'monospace'
+                            }}
+                          >
+                            {analysis.inchi || 'Not available'}
+                          </div>
+                        </div>
+
+                        <div style={cardStyle}>
+                          <strong>InChIKey</strong>
+
+                          <div
+                            style={{
+                              fontSize: '0.9rem',
+                              fontFamily: 'monospace'
+                            }}
+                          >
+                            {analysis.inchi_key || 'Not available'}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Drug Likeness */}
+                      <h4 style={sectionHeaderStyle}>
+                        Drug-likeness
+                      </h4>
+
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr 1fr',
+                          gap: '10px'
+                        }}
+                      >
+                        <div style={cardStyle}>
+                          <strong>QED Score</strong>
+
+                          <div>
+                            {analysis.qed_score}{' '}
+                            <span
+                              style={{
+                                fontSize: '0.8rem',
+                                color: '#666'
+                              }}
+                            >
+                              (0-1, higher = more drug-like)
+                            </span>
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            ...cardStyle,
+                            background: analysis.lipinski_pass
+                              ? '#e8f5e9'
+                              : '#fff3e0'
+                          }}
+                        >
+                          <strong>Lipinski's Rule of 5</strong>
+
+                          <div>
+                            {analysis.lipinski_pass ? 'Pass' : 'Fail'} (
+                            {analysis.lipinski_violations} violation
+                            {analysis.lipinski_violations !== 1 ? 's' : ''}
+                            )
+                          </div>
+                        </div>
+                      </div>
+
                     </div>
                   )
                 ) : (
-                  <p style={{ color: '#666' }}>Draw a molecule in Ketcher, click "Get SMILES", then click "Analyze"</p>
+                  <p style={{ color: '#666' }}>
+                    Draw a molecule in Ketcher, click "Get SMILES",
+                    then click "Analyze"
+                  </p>
                 )}
               </div>
 
+              {/* Drug Likeness Panel */}
               {analysis && !analysis.error && analysis.smiles && (
                 <DrugLikenessPanel analysis={analysis as any} />
               )}
+
             </div>
           </div>
         )}
 
+        {/* ---------- Equation Balancer ---------- */}
         {section === 'balancer' && (
           <div>
             <h3>Chemical Equation Balancer</h3>
-            <div className="card"><EquationBalancer /></div>
+
+            <div className="card">
+              <EquationBalancer />
+            </div>
           </div>
         )}
 
+        {/* ---------- Chemistry Calculators ---------- */}
         {section === 'calculators' && (
           <div>
             <h3>Chemistry Calculators</h3>
-            <div className="card"><ChemCalculators /></div>
+
+            <div className="card">
+              <ChemCalculators />
+            </div>
           </div>
         )}
 
+        {/* ---------- Periodic Table ---------- */}
         {section === 'periodic' && (
           <div>
             <h3>Periodic Table Explorer</h3>
-            <div className="card"><PeriodicTableExplorer /></div>
+
+            <div className="card">
+              <PeriodicTableExplorer />
+            </div>
           </div>
         )}
 
+        {/* ---------- Compound Explorer ---------- */}
         {section === 'compound' && (
           <div>
             <h3>Compound Explorer</h3>
-            <div className="card"><CompoundExplorer /></div>
+
+            <div className="card">
+              <CompoundExplorer />
+            </div>
           </div>
         )}
 
+        {/* ---------- Physics Calculators ---------- */}
         {section === 'physics' && (
           <div>
             <h3>Physics Calculators</h3>
-            <div className="card"><PhysicsCalculators /></div>
+
+            <div className="card">
+              <PhysicsCalculators />
+            </div>
           </div>
         )}
 
-        <div style={{ marginTop: '40px', padding: '20px', background: '#e8f5e9', borderRadius: '8px' }}>
-          <h4 style={{ color: '#00695c' }}>Kenya Curriculum Integration</h4>
+        {/* ---------- Kenya Curriculum Integration ---------- */}
+        <div
+          style={{
+            marginTop: '40px',
+            padding: '20px',
+            background: '#e8f5e9',
+            borderRadius: '8px'
+          }}
+        >
+          <h4 style={{ color: '#00695c' }}>
+            Kenya Curriculum Integration
+          </h4>
+
           <p>This tool is designed for:</p>
-          <ul style={{ marginLeft: '20px', marginTop: '10px' }}>
+
+          <ul
+            style={{
+              marginLeft: '20px',
+              marginTop: '10px'
+            }}
+          >
             <li>Organic Chemistry</li>
             <li>Industrial Chemistry</li>
             <li>Mechanics & Energy</li>
@@ -271,30 +594,52 @@ function App() {
             <li>Laboratory Research at Kenyan Universities</li>
           </ul>
         </div>
+
       </main>
 
+      {/* ---------- Footer ---------- */}
       <footer className="app-footer">
         ChemLab Kenya 2026
       </footer>
 
+      {/* ---------- Chatbot ---------- */}
       <ChatBot />
 
-      {showPaywall && <UsageLimitModal feature={showPaywall} onClose={closePaywall} />}
+      {/* ---------- Usage Limit Modal ---------- */}
+      {showPaywall && (
+        <UsageLimitModal
+          feature={showPaywall}
+          onClose={closePaywall}
+        />
+      )}
 
+      {/* ---------- Password Reset Modal ---------- */}
       {resetToken && (
         <ResetPasswordModal
           token={resetToken}
           onSuccess={() => {
-            window.history.replaceState({}, document.title, window.location.pathname);
+            window.history.replaceState(
+              {},
+              document.title,
+              window.location.pathname
+            );
+
             setResetToken(null);
+
             alert('Password reset successfully! You can now sign in.');
           }}
           onCancel={() => {
-            window.history.replaceState({}, document.title, window.location.pathname);
+            window.history.replaceState(
+              {},
+              document.title,
+              window.location.pathname
+            );
+
             setResetToken(null);
           }}
         />
       )}
+
     </div>
   );
 }
