@@ -1,7 +1,5 @@
-
 /* frontend/src/App.css */
 
-/* ---------- Main App ---------- */
 .App {
   min-height: 100vh;
   display: flex;
@@ -9,40 +7,33 @@
   background: var(--color-bg);
 }
 
-/* ---------- Header: Classic Blue ---------- */
+/* ---------- Header ---------- */
 .app-header {
-  background: linear-gradient(
-    135deg,
-    #A9C9E8 0%,
-    #8FB7DC 100%
-  );
-  border-bottom: 1px solid #82ACD3;
-  padding: var(--space-lg) var(--space-xl);
+  background: linear-gradient(135deg, var(--color-primary-dark) 0%, var(--color-primary) 100%);
+  padding: var(--space-xl) var(--space-xl);
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-md);
-  box-shadow: 0 4px 14px rgba(35, 74, 104, 0.15);
-  position: sticky;
-  top: 0;
+  box-shadow: var(--shadow-md);
   z-index: 100;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
 
 .app-header h1 {
-  color: #173957;
-  font-size: 1.5rem;
+  color: white;
+  font-size: 2rem;
   margin: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
   font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .app-header p {
-  color: #315675;
-  font-size: 0.875rem;
-  margin: 4px 0 0;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.9375rem;
+  margin: 6px 0 0;
+  font-weight: 400;
 }
 
 /* ---------- Navigation ---------- */
@@ -85,7 +76,7 @@
   font-weight: 600;
 }
 
-/* ---------- Main Content ---------- */
+/* ---------- Main ---------- */
 .app-main {
   flex: 1;
   padding: var(--space-xl);
@@ -107,7 +98,7 @@
 
 .card-title {
   color: var(--color-primary-dark);
-  font-size: 1.125rem;
+  font-size: 1.25rem;
   font-weight: 600;
   margin: 0 0 var(--space-md) 0;
   padding-bottom: var(--space-sm);
@@ -172,21 +163,25 @@
   gap: var(--space-lg);
 }
 
-/* ---------- Tablet Responsive ---------- */
 @media (max-width: 768px) {
   .analyzer-grid {
     grid-template-columns: 1fr;
   }
 }
 
-/* ---------- Mobile Responsive ---------- */
+/* ---------- Responsive ---------- */
 @media (max-width: 640px) {
   .app-header {
-    padding: var(--space-md);
+    padding: var(--space-lg) var(--space-md);
+    border-radius: 0;
   }
 
   .app-header h1 {
-    font-size: 1.25rem;
+    font-size: 1.5rem;
+  }
+
+  .app-header p {
+    font-size: 0.8125rem;
   }
 
   .app-nav {
