@@ -41,6 +41,20 @@ const EXAMPLES: { label: string; smiles: string }[] = [
   { label: 'Valeric Acid', smiles: 'CC(C)CC(=O)O' },
 ];
 
+// Atoms students can pick as the active drawing tool
+const QUICK_ATOMS = ['N', 'O', 'S', 'F', 'Cl', 'Br'];
+
+// Pop-up guide for the atom buttons
+const GUIDE_SEEN_KEY = 'chemlab_atom_guide_seen';
+
+const GUIDE_STEPS: string[] = [
+  'Click an atom button, for example N for nitrogen.',
+  'Click a carbon on your structure (such as a benzene carbon), or drag outward from it.',
+  'A new bond appears and ends in the atom you picked. Ketcher fills in the hydrogens, so N shows as NH₂.',
+  'Already drew a line that shows CH₃? Keep the N tool selected and click that end carbon. It changes to NH₂.',
+  'To go back to normal drawing, pick a bond or atom from the left toolbar.',
+];
+
 const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
   const ketcherRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -58,6 +72,7 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
   const [structProvider, setStructProvider] = useState<any>(null);
   const [structProviderError, setStructProviderError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  const [showGuide, setShowGuide] = useState(false);
 
   useEffect(() => {
     if (!activated || structProvider) return;
@@ -109,6 +124,12 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
   const handleInit = (ketcher: any) => {
     ketcherRef.current = ketcher;
     window.ketcher = ketcher;
+    // Show hydrogens only on heteroatoms (N, O...) so terminal carbons look like plain skeletal ends
+    try {
+      ketcher.setSettings({ showHydrogenLabels: 'Hetero' });
+    } catch (err) {
+      console.warn('Could not apply Ketcher display settings:', err);
+    }
     setReady(true);
     setInitTimedOut(false);
     setError(null);
@@ -287,6 +308,93 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
     } catch (err) {
       console.error('Download failed:', err);
       setError('Could not download image. Try using your device screenshot tool.');
+    }
+  };
+
+  // Copy a PNG (for Word) plus the molfile as text (for chemistry tools) to the clipboard
+  const copyImageWithStructure = async () => {
+    try {
+      setError(null);
+      const ketcher = ketcherRef.current;
+      if (!ketcher) {
+        setError('The editor is still loading — please wait a moment and try again.');
+        return;
+      }
+      const mol = await ketcher.getMolfile();
+      if (!mol || (!mol.includes('V2000') && !mol.includes('V3000'))) {
+        setError('Canvas is empty — draw a structure first.');
+        return;
+      }
+      if (!navigator.clipboard || typeof ClipboardItem === 'undefined') {
+        throw new Error('Clipboard images not supported');
+      }
+      const png: Blob = await ketcher.generateImage(mol, {
+        outputFormat: 'png',
+        backgroundColor: '255, 255, 255',
+        bondThickness: 2,
+      });
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'image/png': png,
+          'text/plain': new Blob([mol], { type: 'text/plain' }),
+        }),
+      ]);
+    } catch (err) {
+      console.error('Copy failed:', err);
+      setError('Could not copy to clipboard. Use "Download as Image" and insert it into Word instead.');
+    }
+  };
+
+  // Download the structure as an editable .mol file
+  const downloadText = (text: string, filename: string) => {
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadMol = async () => {
+    try {
+      setError(null);
+      const mol = await ketcherRef.current?.getMolfile();
+      if (!mol || (!mol.includes('V2000') && !mol.includes('V3000'))) {
+        setError('Canvas is empty — draw a structure first.');
+        return;
+      }
+      downloadText(mol, 'chemlab-structure.mol');
+    } catch (err) {
+      console.error('Mol download failed:', err);
+      setError('Could not download the .mol file.');
+    }
+  };
+
+  // Atom guide pop-up helpers
+  const openGuide = () => setShowGuide(true);
+
+  const closeGuide = () => {
+    setShowGuide(false);
+    try {
+      localStorage.setItem(GUIDE_SEEN_KEY, '1');
+    } catch {
+      /* storage may be blocked; ignore */
+    }
+  };
+
+  // Switch Ketcher's active tool to a given atom (and show the guide the first time only)
+  const selectAtomTool = (label: string) => {
+    try {
+      ketcherRef.current?.editor.tool('atom', { label });
+    } catch (err) {
+      console.error('Could not select atom tool:', err);
+      setError('Could not switch the atom tool. Pick the atom from the left toolbar instead.');
+    }
+
+    try {
+      if (!localStorage.getItem(GUIDE_SEEN_KEY)) setShowGuide(true);
+    } catch {
+      /* ignore */
     }
   };
 
@@ -593,6 +701,129 @@ const KetcherEditor: React.FC<KetcherEditorProps> = ({ height = '500px' }) => {
           >
             Download as Image
           </button>
+          {/* Copy image (paste into Word) */}
+          <button
+            onClick={copyImageWithStructure}
+            disabled={!ready}
+            title="Copies a picture you can paste into Word, plus the structure data for chemistry tools"
+            style={{
+              padding: '8px 20px',
+              background: ready ? '#00897b' : '#ccc',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: ready ? 'pointer' : 'not-allowed',
+              touchAction: 'manipulation'
+            }}
+          >
+            Copy as Image
+          </button>
+          {/* Download editable .mol */}
+          <button
+            onClick={downloadMol}
+            disabled={!ready}
+            title="Download an editable structure file (opens in ChemDraw, Ketcher, MarvinSketch)"
+            style={{
+              padding: '8px 20px',
+              background: ready ? '#00897b' : '#ccc',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: ready ? 'pointer' : 'not-allowed',
+              touchAction: 'manipulation'
+            }}
+          >
+            Download .mol
+          </button>
+        </div>
+      )}
+
+      {/* Quick-atom buttons + help */}
+      {activated && ready && (
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px', alignItems: 'center' }}>
+          <strong style={{ fontSize: '0.9rem' }}>Add atom:</strong>
+          {QUICK_ATOMS.map((a) => (
+            <button key={a} onClick={() => selectAtomTool(a)} style={exampleBtnStyle}>
+              {a}
+            </button>
+          ))}
+          <button
+            onClick={openGuide}
+            title="How to use the atom buttons"
+            aria-label="How to use the atom buttons"
+            style={{
+              width: '28px',
+              height: '28px',
+              borderRadius: '50%',
+              border: '1px solid #00897b',
+              background: 'white',
+              color: '#00897b',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              touchAction: 'manipulation'
+            }}
+          >
+            ?
+          </button>
+        </div>
+      )}
+
+      {/* Guide pop-up */}
+      {showGuide && (
+        <div
+          onClick={closeGuide}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000,
+            padding: '16px'
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="How to add atoms"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'white',
+              borderRadius: '10px',
+              padding: '20px',
+              maxWidth: '420px',
+              width: '100%',
+              maxHeight: '85vh',
+              overflowY: 'auto',
+              boxShadow: '0 8px 30px rgba(0,0,0,0.3)'
+            }}
+          >
+            <h3 style={{ margin: '0 0 10px', color: '#00695c' }}>How to add atoms</h3>
+            <ol style={{ paddingLeft: '20px', margin: '0 0 15px', fontSize: '0.95rem', lineHeight: 1.5 }}>
+              {GUIDE_STEPS.map((step, i) => (
+                <li key={i} style={{ marginBottom: '8px' }}>{step}</li>
+              ))}
+            </ol>
+            <div style={{ fontSize: '0.8rem', color: '#888', marginBottom: '15px' }}>
+              You can reopen this anytime with the ? button.
+            </div>
+            <button
+              onClick={closeGuide}
+              style={{
+                padding: '10px 24px',
+                background: '#00897b',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '15px',
+                touchAction: 'manipulation'
+              }}
+            >
+              Got it
+            </button>
+          </div>
         </div>
       )}
 
